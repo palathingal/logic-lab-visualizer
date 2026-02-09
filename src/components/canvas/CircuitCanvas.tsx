@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { CircuitComponent, Wire, CanvasState, ComponentType } from '@/types/circuit';
+import { CircuitComponent, Wire, CanvasState, ComponentType, TimingViolation } from '@/types/circuit';
 import { GateSVG } from '@/components/gates/GateSVG';
 import { getComponentDefinition } from '@/lib/componentDefinitions';
 
@@ -7,6 +7,7 @@ interface CircuitCanvasProps {
   components: CircuitComponent[];
   wires: Wire[];
   canvasState: CanvasState;
+  violations: TimingViolation[];
   onSelectComponent: (id: string | null) => void;
   onSelectWire: (id: string | null) => void;
   onUpdateComponentPosition: (id: string, position: { x: number; y: number }) => void;
@@ -22,6 +23,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   components,
   wires,
   canvasState,
+  violations,
   onSelectComponent,
   onSelectWire,
   onUpdateComponentPosition,
@@ -245,18 +247,19 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         {components.map(component => {
           const definition = getComponentDefinition(component.type);
           const isSelected = canvasState.selectedComponentId === component.id;
+          const hasViolation = violations.some(v => v.componentId === component.id);
           
           return (
             <div
               key={component.id}
-              className={`absolute gate-component cursor-move ${isSelected ? 'z-10' : ''}`}
+              className={`absolute gate-component cursor-move ${isSelected ? 'z-10' : ''} ${hasViolation ? 'animate-pulse' : ''}`}
               style={{
                 left: component.position.x,
                 top: component.position.y,
               }}
               onMouseDown={(e) => handleComponentMouseDown(e, component.id)}
             >
-              <GateSVG type={component.type} isSelected={isSelected} />
+              <GateSVG type={component.type} isSelected={isSelected} hasViolation={hasViolation} />
               
               {/* Pin hitboxes */}
               {component.pins.map(pin => (

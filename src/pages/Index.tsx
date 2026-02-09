@@ -2,6 +2,7 @@ import React, { useEffect, useCallback } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { ComponentPalette } from '@/components/sidebar/ComponentPalette';
 import { PropertiesPanel } from '@/components/sidebar/PropertiesPanel';
+import { TimingAnalysisPanel } from '@/components/timing/TimingAnalysisPanel';
 import { CircuitCanvas } from '@/components/canvas/CircuitCanvas';
 import { WaveformViewer } from '@/components/waveform/WaveformViewer';
 import { SimulationToolbar } from '@/components/toolbar/SimulationToolbar';
@@ -158,6 +159,7 @@ const Index: React.FC = () => {
                   components={circuit.components}
                   wires={circuit.wires}
                   canvasState={canvasState}
+                  violations={simState.violations}
                   onSelectComponent={selectComponent}
                   onSelectWire={selectWire}
                   onUpdateComponentPosition={updateComponentPosition}
@@ -186,17 +188,29 @@ const Index: React.FC = () => {
 
           <ResizableHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
 
-          {/* Right Sidebar - Properties */}
-          <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-            <PropertiesPanel
-              component={selectedComponent}
-              wire={selectedWire}
-              onUpdatePattern={updateComponentPattern}
-              onUpdateTiming={updateComponentTiming}
-              onUpdateName={updateComponentName}
-              onRemoveComponent={removeComponent}
-              onRemoveWire={removeWire}
-            />
+          {/* Right Sidebar - Properties & Timing Analysis */}
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+            <ResizablePanelGroup direction="vertical">
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <PropertiesPanel
+                  component={selectedComponent}
+                  wire={selectedWire}
+                  onUpdatePattern={updateComponentPattern}
+                  onUpdateTiming={updateComponentTiming}
+                  onUpdateName={updateComponentName}
+                  onRemoveComponent={removeComponent}
+                  onRemoveWire={removeWire}
+                />
+              </ResizablePanel>
+              <ResizableHandle className="h-1 bg-border hover:bg-primary/50 transition-colors" />
+              <ResizablePanel defaultSize={50} minSize={20}>
+                <TimingAnalysisPanel
+                  violations={simState.violations}
+                  components={circuit.components}
+                  onSelectComponent={selectComponent}
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

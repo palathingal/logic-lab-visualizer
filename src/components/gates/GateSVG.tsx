@@ -5,12 +5,17 @@ interface GateSVGProps {
   type: ComponentType;
   isSelected?: boolean;
   isActive?: boolean;
+  hasViolation?: boolean;
 }
 
-export const GateSVG: React.FC<GateSVGProps> = ({ type, isSelected, isActive }) => {
-  const strokeColor = isSelected ? 'hsl(var(--primary))' : 'hsl(var(--gate-stroke))';
-  const fillColor = 'hsl(var(--gate-fill))';
-  const glowFilter = isActive ? 'signal-glow' : '';
+export const GateSVG: React.FC<GateSVGProps> = ({ type, isSelected, isActive, hasViolation }) => {
+  const strokeColor = hasViolation 
+    ? 'hsl(var(--destructive))' 
+    : isSelected 
+      ? 'hsl(var(--primary))' 
+      : 'hsl(var(--gate-stroke))';
+  const fillColor = hasViolation ? 'hsl(var(--destructive) / 0.15)' : 'hsl(var(--gate-fill))';
+  const glowFilter = hasViolation ? 'violation-glow' : isActive ? 'signal-glow' : '';
 
   switch (type) {
     case 'AND':
