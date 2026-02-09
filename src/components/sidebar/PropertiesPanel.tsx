@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircuitComponent, InputPattern, Wire } from '@/types/circuit';
+import { CircuitComponent, InputPattern, Wire, TimingParameters } from '@/types/circuit';
 import { getComponentDefinition } from '@/lib/componentDefinitions';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,8 @@ interface PropertiesPanelProps {
   component: CircuitComponent | null;
   wire: Wire | null;
   onUpdatePattern: (componentId: string, pattern: InputPattern) => void;
+  onUpdateTiming: (componentId: string, timing: Partial<TimingParameters>) => void;
+  onUpdateName: (componentId: string, name: string) => void;
   onRemoveComponent: (componentId: string) => void;
   onRemoveWire: (wireId: string) => void;
 }
@@ -22,6 +24,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   component,
   wire,
   onUpdatePattern,
+  onUpdateTiming,
+  onUpdateName,
   onRemoveComponent,
   onRemoveWire,
 }) => {
@@ -95,7 +99,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           {/* Component Info */}
           <div>
             <Label className="text-xs text-muted-foreground">Name</Label>
-            <p className="text-sm font-medium text-foreground mt-1">{component!.name}</p>
+            <Input
+              value={component!.name}
+              onChange={(e) => onUpdateName(component!.id, e.target.value)}
+              className="h-8 text-sm bg-input border-border mt-1"
+            />
           </div>
           
           <div>
@@ -112,32 +120,82 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
           <Separator className="bg-sidebar-border" />
 
-          {/* Timing Parameters */}
+          {/* Timing Parameters - Now Editable */}
           <div>
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Timing</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Timing Parameters</Label>
             <div className="space-y-3 mt-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Prop. Delay</span>
-                <span className="text-xs font-mono text-foreground">{component!.timing.propagationDelay} ns</span>
+              <div>
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs">Propagation Delay</Label>
+                  <span className="text-xs font-mono text-muted-foreground">ns</span>
+                </div>
+                <Input
+                  type="number"
+                  value={component!.timing.propagationDelay}
+                  onChange={(e) => onUpdateTiming(component!.id, { propagationDelay: Number(e.target.value) })}
+                  className="h-8 text-xs bg-input border-border mt-1"
+                  min={0}
+                  step={0.1}
+                />
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Rise Time</span>
-                <span className="text-xs font-mono text-foreground">{component!.timing.riseTime} ns</span>
+              <div>
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs">Rise Time</Label>
+                  <span className="text-xs font-mono text-muted-foreground">ns</span>
+                </div>
+                <Input
+                  type="number"
+                  value={component!.timing.riseTime}
+                  onChange={(e) => onUpdateTiming(component!.id, { riseTime: Number(e.target.value) })}
+                  className="h-8 text-xs bg-input border-border mt-1"
+                  min={0}
+                  step={0.1}
+                />
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">Fall Time</span>
-                <span className="text-xs font-mono text-foreground">{component!.timing.fallTime} ns</span>
+              <div>
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs">Fall Time</Label>
+                  <span className="text-xs font-mono text-muted-foreground">ns</span>
+                </div>
+                <Input
+                  type="number"
+                  value={component!.timing.fallTime}
+                  onChange={(e) => onUpdateTiming(component!.id, { fallTime: Number(e.target.value) })}
+                  className="h-8 text-xs bg-input border-border mt-1"
+                  min={0}
+                  step={0.1}
+                />
               </div>
               {component!.timing.setupTime !== undefined && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Setup Time</span>
-                  <span className="text-xs font-mono text-foreground">{component!.timing.setupTime} ns</span>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Setup Time</Label>
+                    <span className="text-xs font-mono text-muted-foreground">ns</span>
+                  </div>
+                  <Input
+                    type="number"
+                    value={component!.timing.setupTime}
+                    onChange={(e) => onUpdateTiming(component!.id, { setupTime: Number(e.target.value) })}
+                    className="h-8 text-xs bg-input border-border mt-1"
+                    min={0}
+                    step={0.1}
+                  />
                 </div>
               )}
               {component!.timing.holdTime !== undefined && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Hold Time</span>
-                  <span className="text-xs font-mono text-foreground">{component!.timing.holdTime} ns</span>
+                <div>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs">Hold Time</Label>
+                    <span className="text-xs font-mono text-muted-foreground">ns</span>
+                  </div>
+                  <Input
+                    type="number"
+                    value={component!.timing.holdTime}
+                    onChange={(e) => onUpdateTiming(component!.id, { holdTime: Number(e.target.value) })}
+                    className="h-8 text-xs bg-input border-border mt-1"
+                    min={0}
+                    step={0.1}
+                  />
                 </div>
               )}
             </div>

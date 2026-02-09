@@ -23,6 +23,7 @@ interface SimulationToolbarProps {
   currentTime: number;
   endTime: number;
   playSpeed: number;
+  circuitName: string;
   onPlay: () => void;
   onPause: () => void;
   onStep: () => void;
@@ -31,6 +32,9 @@ interface SimulationToolbarProps {
   onSetEndTime: (time: number) => void;
   onSetPlaySpeed: (speed: number) => void;
   onClearCircuit: () => void;
+  onSaveProject: () => void;
+  onLoadProject: () => void;
+  onUpdateCircuitName: (name: string) => void;
 }
 
 export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
@@ -38,6 +42,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   currentTime,
   endTime,
   playSpeed,
+  circuitName,
   onPlay,
   onPause,
   onStep,
@@ -46,14 +51,21 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   onSetEndTime,
   onSetPlaySpeed,
   onClearCircuit,
+  onSaveProject,
+  onLoadProject,
+  onUpdateCircuitName,
 }) => {
   return (
     <TooltipProvider>
       <div className="flex items-center gap-2 px-4 py-2 bg-card border-b border-border">
-        {/* Logo */}
+        {/* Logo & Project Name */}
         <div className="flex items-center gap-2 mr-4">
           <Zap className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-foreground">LogicLab</span>
+          <Input
+            value={circuitName}
+            onChange={(e) => onUpdateCircuitName(e.target.value)}
+            className="h-7 w-32 text-sm font-semibold bg-transparent border-transparent hover:border-border focus:border-primary px-1"
+          />
         </div>
 
         <Separator orientation="vertical" className="h-6 bg-border" />
@@ -179,12 +191,12 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 hover:bg-secondary hover:text-primary"
-                disabled
+                onClick={onLoadProject}
               >
                 <FileUp className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Import Netlist (Coming Soon)</TooltipContent>
+            <TooltipContent>Open Project</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -193,12 +205,12 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 hover:bg-secondary hover:text-primary"
-                disabled
+                onClick={onSaveProject}
               >
                 <FileDown className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Export Circuit (Coming Soon)</TooltipContent>
+            <TooltipContent>Save Project</TooltipContent>
           </Tooltip>
 
           <Separator orientation="vertical" className="h-6 bg-border" />

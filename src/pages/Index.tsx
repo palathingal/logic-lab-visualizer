@@ -16,6 +16,8 @@ const Index: React.FC = () => {
     removeComponent,
     updateComponentPosition,
     updateComponentPattern,
+    updateComponentTiming,
+    updateComponentName,
     removeWire,
     selectComponent,
     selectWire,
@@ -25,6 +27,9 @@ const Index: React.FC = () => {
     setZoom,
     setPan,
     clearCircuit,
+    saveCircuitToFile,
+    loadCircuitFromFile,
+    updateCircuitName,
   } = useCircuit();
 
   const {
@@ -89,6 +94,29 @@ const Index: React.FC = () => {
     reset();
   }, [clearCircuit, reset]);
 
+  const handleSaveProject = useCallback(() => {
+    saveCircuitToFile();
+  }, [saveCircuitToFile]);
+
+  const handleLoadProject = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.logiclab.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          await loadCircuitFromFile(file);
+          reset();
+        } catch (err) {
+          console.error('Failed to load circuit:', err);
+          alert('Failed to load circuit file. Please ensure it is a valid LogicLab project file.');
+        }
+      }
+    };
+    input.click();
+  }, [loadCircuitFromFile, reset]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-background overflow-hidden">
       {/* Top Toolbar */}
@@ -97,6 +125,7 @@ const Index: React.FC = () => {
         currentTime={simState.currentTime}
         endTime={simState.endTime}
         playSpeed={playSpeed}
+        circuitName={circuit.name}
         onPlay={play}
         onPause={pause}
         onStep={step}
@@ -105,6 +134,9 @@ const Index: React.FC = () => {
         onSetEndTime={(time) => setParameters({ endTime: time })}
         onSetPlaySpeed={setPlaySpeed}
         onClearCircuit={handleClearCircuit}
+        onSaveProject={handleSaveProject}
+        onLoadProject={handleLoadProject}
+        onUpdateCircuitName={updateCircuitName}
       />
 
       {/* Main Content */}
@@ -160,6 +192,8 @@ const Index: React.FC = () => {
               component={selectedComponent}
               wire={selectedWire}
               onUpdatePattern={updateComponentPattern}
+              onUpdateTiming={updateComponentTiming}
+              onUpdateName={updateComponentName}
               onRemoveComponent={removeComponent}
               onRemoveWire={removeWire}
             />
