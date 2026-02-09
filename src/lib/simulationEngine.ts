@@ -50,11 +50,15 @@ export class SimulationEngine {
   private state: SimulationState;
   private nodeValues: Map<string, LogicValue>;
   private previousNodeValues: Map<string, LogicValue>;
+  private lastDataChangeTime: Map<string, number>; // Track when data last changed for setup/hold checks
+  private lastClockEdgeTime: Map<string, number>; // Track last clock edge per component
 
   constructor() {
     this.circuit = { id: '', name: '', components: [], wires: [], metadata: { created: new Date(), modified: new Date(), version: '1.0' } };
     this.nodeValues = new Map();
     this.previousNodeValues = new Map();
+    this.lastDataChangeTime = new Map();
+    this.lastClockEdgeTime = new Map();
     this.state = this.createInitialState();
   }
 
@@ -74,6 +78,8 @@ export class SimulationEngine {
     this.circuit = circuit;
     this.nodeValues = new Map();
     this.previousNodeValues = new Map();
+    this.lastDataChangeTime = new Map();
+    this.lastClockEdgeTime = new Map();
     this.state = this.createInitialState();
     
     // Initialize all nodes to X
@@ -95,6 +101,32 @@ export class SimulationEngine {
         });
       }
     });
+  }
+
+  private checkSetupViolation(component: CircuitComponent, dataChangeTime: number, clockEdgeTime: number): boolean {
+    const setupTime = component.timing.setupTime ?? 0;
+    if (setupTime <= 0) return false;
+    
+    const timeBetween = clockEdgeTime - dataChangeTime;
+    return timeBetween < setupTime && timeBetween >= 0;
+  }
+
+  private checkHoldViolation(component: CircuitComponent, dataChangeTime: number, clockEdgeTime: number): boolean {
+    const holdTime = component.timing.holdTime ?? 0;
+    if (holdTime <= 0) return false;
+    
+    const timeSinceClock = dataChangeTime - clockEdgeTime;
+    return timeSinceClock >= 0 && timeSinceClock < holdTime;
+  }
+
+  private addViolation(type: TimingViolation['type'], componentId: string, time: number, message: string, severity: 'warning' | 'error' = 'error'): void {
+    // Avoid duplicate violations at same time
+    const exists = this.state.violations.some(
+      v => v.componentId === componentId && v.type === type && Math.abs(v.time - time) < 0.1
+    );
+    if (!exists) {
+      this.state.violations.push({ type, time, componentId, message, severity });
+    }
   }
 
   getState(): SimulationState {
@@ -134,17 +166,54 @@ export class SimulationEngine {
   }
 
   private evaluateSequential(component: CircuitComponent, clockEdge: boolean): LogicValue | null {
-    if (!clockEdge) return null;
-    
     const inputs = this.getInputValues(component);
+    
+    // For D_FF and JK_FF, check timing violations on clock edge
+    if (['D_FF', 'JK_FF'].includes(component.type) && clockEdge) {
+      // Get the data input wire
+      const dataPin = component.pins.find(p => p.name === 'D' || p.name === 'J');
+      if (dataPin) {
+        const wire = this.circuit.wires.find(w => 
+          w.targetComponentId === component.id && w.targetPinId === dataPin.id
+        );
+        if (wire) {
+          const dataNodeId = `${wire.sourceComponentId}.${wire.sourcePinId}`;
+          const lastDataChange = this.lastDataChangeTime.get(dataNodeId) ?? 0;
+          
+          // Setup time check
+          if (this.checkSetupViolation(component, lastDataChange, this.state.currentTime)) {
+            this.addViolation(
+              'setup',
+              component.id,
+              this.state.currentTime,
+              `Setup time violation: Data changed ${(this.state.currentTime - lastDataChange).toFixed(2)}ns before clock edge (required: ${component.timing.setupTime}ns)`,
+              'error'
+            );
+          }
+
+          // Hold time check - check if data changed too soon after last clock edge
+          const lastClockEdge = this.lastClockEdgeTime.get(component.id) ?? 0;
+          if (lastClockEdge > 0 && this.checkHoldViolation(component, lastDataChange, lastClockEdge)) {
+            this.addViolation(
+              'hold',
+              component.id,
+              lastDataChange,
+              `Hold time violation: Data changed ${(lastDataChange - lastClockEdge).toFixed(2)}ns after clock edge (required: ${component.timing.holdTime}ns)`,
+              'error'
+            );
+          }
+        }
+      }
+
+      // Record this clock edge time
+      this.lastClockEdgeTime.set(component.id, this.state.currentTime);
+    }
+
+    if (!clockEdge && !['SR_LATCH', 'D_LATCH'].includes(component.type)) return null;
     
     switch (component.type) {
       case 'D_FF': {
         const [d] = inputs;
-        // Check for timing violations
-        if (component.timing.setupTime !== undefined) {
-          // Setup time check would go here
-        }
         return d;
       }
       case 'JK_FF': {
@@ -246,6 +315,8 @@ export class SimulationEngine {
           this.nodeValues.set(nodeId, value);
           if (prevValue !== value) {
             this.recordTransition(comp.id, value, this.state.currentTime);
+            // Track data change time for setup/hold analysis
+            this.lastDataChangeTime.set(nodeId, this.state.currentTime);
           }
         }
       }
@@ -264,9 +335,18 @@ export class SimulationEngine {
           this.nodeValues.set(nodeId, newValue);
           
           if (prevValue !== newValue) {
+            // Track data change time
+            this.lastDataChangeTime.set(nodeId, this.state.currentTime);
+            
             // Check for glitches
             const isGlitch = this.state.currentTime > 0 && 
               this.previousNodeValues.get(nodeId) === newValue;
+            
+            if (isGlitch) {
+              this.addViolation('glitch', comp.id, this.state.currentTime, 
+                `Glitch detected: Output oscillated at ${this.state.currentTime.toFixed(2)}ns`, 'warning');
+            }
+            
             this.recordTransition(comp.id, newValue, this.state.currentTime, isGlitch);
           }
         }
@@ -350,6 +430,8 @@ export class SimulationEngine {
     this.state = this.createInitialState();
     this.nodeValues = new Map();
     this.previousNodeValues = new Map();
+    this.lastDataChangeTime = new Map();
+    this.lastClockEdgeTime = new Map();
     
     // Re-initialize
     this.circuit.components.forEach(comp => {
