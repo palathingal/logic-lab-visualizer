@@ -114,6 +114,79 @@ export const useCircuit = () => {
     }));
   }, []);
 
+  const updateComponentTiming = useCallback((componentId: string, timing: Partial<CircuitComponent['timing']>) => {
+    setCircuit(prev => ({
+      ...prev,
+      components: prev.components.map(c =>
+        c.id === componentId ? { ...c, timing: { ...c.timing, ...timing } } : c
+      ),
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+  }, []);
+
+  const updateComponentName = useCallback((componentId: string, name: string) => {
+    setCircuit(prev => ({
+      ...prev,
+      components: prev.components.map(c =>
+        c.id === componentId ? { ...c, name } : c
+      ),
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+  }, []);
+
+  const saveCircuitToFile = useCallback(() => {
+    const dataStr = JSON.stringify(circuit, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${circuit.name.replace(/\s+/g, '_')}.logiclab.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [circuit]);
+
+  const loadCircuitFromFile = useCallback((file: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          const parsed = JSON.parse(content) as Circuit;
+          // Validate basic structure
+          if (!parsed.id || !parsed.components || !parsed.wires) {
+            throw new Error('Invalid circuit file format');
+          }
+          // Restore Date objects
+          parsed.metadata.created = new Date(parsed.metadata.created);
+          parsed.metadata.modified = new Date();
+          setCircuit(parsed);
+          setCanvasState(prev => ({
+            ...prev,
+            selectedComponentId: null,
+            selectedWireId: null,
+            isWiring: false,
+            wireStartPin: null,
+          }));
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }, []);
+
+  const updateCircuitName = useCallback((name: string) => {
+    setCircuit(prev => ({
+      ...prev,
+      name,
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+  }, []);
+
   const addWire = useCallback((
     sourceComponentId: string, 
     sourcePinId: string,
@@ -279,6 +352,8 @@ export const useCircuit = () => {
     removeComponent,
     updateComponentPosition,
     updateComponentPattern,
+    updateComponentTiming,
+    updateComponentName,
     addWire,
     removeWire,
     selectComponent,
@@ -290,5 +365,8 @@ export const useCircuit = () => {
     setPan,
     clearCircuit,
     loadCircuit,
+    saveCircuitToFile,
+    loadCircuitFromFile,
+    updateCircuitName,
   };
 };
