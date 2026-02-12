@@ -50,8 +50,9 @@ export class SimulationEngine {
   private state: SimulationState;
   private nodeValues: Map<string, LogicValue>;
   private previousNodeValues: Map<string, LogicValue>;
-  private lastDataChangeTime: Map<string, number>; // Track when data last changed for setup/hold checks
-  private lastClockEdgeTime: Map<string, number>; // Track last clock edge per component
+  private lastDataChangeTime: Map<string, number>;
+  private lastClockEdgeTime: Map<string, number>;
+  private pendingEvents: SimulationEvent[]; // Delay-based event queue
 
   constructor() {
     this.circuit = { id: '', name: '', components: [], wires: [], metadata: { created: new Date(), modified: new Date(), version: '1.0' } };
@@ -59,6 +60,7 @@ export class SimulationEngine {
     this.previousNodeValues = new Map();
     this.lastDataChangeTime = new Map();
     this.lastClockEdgeTime = new Map();
+    this.pendingEvents = [];
     this.state = this.createInitialState();
   }
 
@@ -80,6 +82,7 @@ export class SimulationEngine {
     this.previousNodeValues = new Map();
     this.lastDataChangeTime = new Map();
     this.lastClockEdgeTime = new Map();
+    this.pendingEvents = [];
     this.state = this.createInitialState();
     
     // Initialize all nodes to X
@@ -136,15 +139,23 @@ export class SimulationEngine {
   private calculateDelay(component: CircuitComponent, fanout: number = 1): number {
     const baseDelay = component.timing.propagationDelay;
     
+    if (baseDelay <= 0) return 0;
+
     if (component.logicalEffort) {
-      // Logical effort delay model: d = g * h + p
-      // where g = logical effort, h = electrical effort (fanout), p = parasitic delay
       const { logicalEffort, parasiticDelay, loadCapacitance } = component.logicalEffort;
       return logicalEffort * fanout * loadCapacitance + parasiticDelay;
     }
     
     // Simple linear fanout model
     return baseDelay * (1 + 0.1 * (fanout - 1));
+  }
+
+  private getFanout(component: CircuitComponent): number {
+    const outputPin = component.pins.find(p => p.type === 'output');
+    if (!outputPin) return 1;
+    return Math.max(1, this.circuit.wires.filter(w =>
+      w.sourceComponentId === component.id && w.sourcePinId === outputPin.id
+    ).length);
   }
 
   private getInputValues(component: CircuitComponent): LogicValue[] {
@@ -304,7 +315,40 @@ export class SimulationEngine {
 
     this.previousNodeValues = new Map(this.nodeValues);
 
-    // Process input sources
+    // 1. Process all pending events whose time has arrived
+    const readyEvents: SimulationEvent[] = [];
+    this.pendingEvents = this.pendingEvents.filter(ev => {
+      if (ev.time <= this.state.currentTime) {
+        readyEvents.push(ev);
+        return false;
+      }
+      return true;
+    });
+
+    // Apply pending delayed events
+    for (const ev of readyEvents) {
+      const prevValue = this.nodeValues.get(ev.nodeId);
+      if (prevValue !== ev.newValue) {
+        this.nodeValues.set(ev.nodeId, ev.newValue);
+        this.lastDataChangeTime.set(ev.nodeId, this.state.currentTime);
+
+        // Find the component that owns this node to record transition
+        const [compId] = ev.nodeId.split('.');
+        const comp = this.circuit.components.find(c => c.id === compId);
+        if (comp) {
+          // Check for glitch: value bounced back to what it was before
+          const isGlitch = this.state.currentTime > 0 &&
+            this.previousNodeValues.get(ev.nodeId) === ev.newValue;
+          if (isGlitch) {
+            this.addViolation('glitch', comp.id, this.state.currentTime,
+              `Glitch detected: Output oscillated at ${this.state.currentTime.toFixed(2)}ns`, 'warning');
+          }
+          this.recordTransition(comp.id, ev.newValue, this.state.currentTime, isGlitch);
+        }
+      }
+    }
+
+    // 2. Process input sources (inputs have zero delay — they drive the circuit)
     this.circuit.components.forEach(comp => {
       if (comp.type === 'INPUT' || comp.type === 'CLOCK' || comp.type === 'CONSTANT') {
         const value = this.generateInputValue(comp, this.state.currentTime);
@@ -315,60 +359,68 @@ export class SimulationEngine {
           this.nodeValues.set(nodeId, value);
           if (prevValue !== value) {
             this.recordTransition(comp.id, value, this.state.currentTime);
-            // Track data change time for setup/hold analysis
             this.lastDataChangeTime.set(nodeId, this.state.currentTime);
           }
         }
       }
     });
 
-    // Evaluate gates (with propagation delay consideration)
+    // 3. Evaluate combinational gates — schedule output changes with propagation delay
     this.circuit.components.forEach(comp => {
       if (comp.type in gateLogic) {
         const outputPin = comp.pins.find(p => p.type === 'output');
         if (outputPin) {
           const newValue = this.evaluateGate(comp);
           const nodeId = `${comp.id}.${outputPin.id}`;
-          const prevValue = this.nodeValues.get(nodeId);
-          
-          // For now, apply immediately (TODO: add event queue for delays)
-          this.nodeValues.set(nodeId, newValue);
-          
-          if (prevValue !== newValue) {
-            // Track data change time
-            this.lastDataChangeTime.set(nodeId, this.state.currentTime);
-            
-            // Check for glitches
-            const isGlitch = this.state.currentTime > 0 && 
-              this.previousNodeValues.get(nodeId) === newValue;
-            
-            if (isGlitch) {
-              this.addViolation('glitch', comp.id, this.state.currentTime, 
-                `Glitch detected: Output oscillated at ${this.state.currentTime.toFixed(2)}ns`, 'warning');
+          const currentValue = this.nodeValues.get(nodeId);
+
+          if (currentValue !== newValue) {
+            const fanout = this.getFanout(comp);
+            const delay = this.calculateDelay(comp, fanout);
+
+            if (delay <= 0) {
+              // Zero delay — apply immediately
+              this.nodeValues.set(nodeId, newValue);
+              this.lastDataChangeTime.set(nodeId, this.state.currentTime);
+              const isGlitch = this.state.currentTime > 0 &&
+                this.previousNodeValues.get(nodeId) === newValue;
+              if (isGlitch) {
+                this.addViolation('glitch', comp.id, this.state.currentTime,
+                  `Glitch detected: Output oscillated at ${this.state.currentTime.toFixed(2)}ns`, 'warning');
+              }
+              this.recordTransition(comp.id, newValue, this.state.currentTime, isGlitch);
+            } else {
+              // Schedule the output change after propagation delay
+              const eventTime = this.state.currentTime + delay;
+              // Remove any already-pending event for this node (superseded)
+              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== nodeId);
+              this.pendingEvents.push({
+                time: eventTime,
+                nodeId,
+                newValue,
+                source: 'gate',
+              });
             }
-            
-            this.recordTransition(comp.id, newValue, this.state.currentTime, isGlitch);
           }
         }
       }
     });
 
-    // Evaluate sequential elements
+    // 4. Evaluate sequential elements
     this.circuit.components.forEach(comp => {
       if (['D_FF', 'JK_FF', 'SR_LATCH', 'D_LATCH'].includes(comp.type)) {
-        // Detect clock edge
         const clkPin = comp.pins.find(p => p.name === 'CLK' || p.name === 'EN');
         let clockEdge = false;
-        
+
         if (clkPin) {
-          const wire = this.circuit.wires.find(w => 
+          const wire = this.circuit.wires.find(w =>
             w.targetComponentId === comp.id && w.targetPinId === clkPin.id
           );
           if (wire) {
             const clkNodeId = `${wire.sourceComponentId}.${wire.sourcePinId}`;
             const prevClk = this.previousNodeValues.get(clkNodeId);
             const currClk = this.nodeValues.get(clkNodeId);
-            clockEdge = prevClk === 0 && currClk === 1; // Rising edge
+            clockEdge = prevClk === 0 && currClk === 1;
           }
         }
 
@@ -376,25 +428,38 @@ export class SimulationEngine {
         if (newQ !== null) {
           const qPin = comp.pins.find(p => p.name === 'Q');
           const qBarPin = comp.pins.find(p => p.name === 'Q̄');
-          
+          const delay = comp.timing.propagationDelay;
+
           if (qPin) {
-            this.nodeValues.set(`${comp.id}.${qPin.id}`, newQ);
-            this.recordTransition(comp.id, newQ, this.state.currentTime);
+            const qNodeId = `${comp.id}.${qPin.id}`;
+            if (delay > 0 && clockEdge) {
+              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== qNodeId);
+              this.pendingEvents.push({ time: this.state.currentTime + delay, nodeId: qNodeId, newValue: newQ, source: 'sequential' });
+            } else {
+              this.nodeValues.set(qNodeId, newQ);
+              this.recordTransition(comp.id, newQ, this.state.currentTime);
+            }
           }
           if (qBarPin) {
             const qBar: LogicValue = newQ === 'X' ? 'X' : (newQ === 1 ? 0 : 1);
-            this.nodeValues.set(`${comp.id}.${qBarPin.id}`, qBar);
+            const qBarNodeId = `${comp.id}.${qBarPin.id}`;
+            if (delay > 0 && clockEdge) {
+              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== qBarNodeId);
+              this.pendingEvents.push({ time: this.state.currentTime + delay, nodeId: qBarNodeId, newValue: qBar, source: 'sequential' });
+            } else {
+              this.nodeValues.set(qBarNodeId, qBar);
+            }
           }
         }
       }
     });
 
-    // Update output probes
+    // 5. Update output probes
     this.circuit.components.forEach(comp => {
       if (comp.type === 'OUTPUT') {
         const inputPin = comp.pins.find(p => p.type === 'input');
         if (inputPin) {
-          const wire = this.circuit.wires.find(w => 
+          const wire = this.circuit.wires.find(w =>
             w.targetComponentId === comp.id && w.targetPinId === inputPin.id
           );
           if (wire) {
@@ -432,6 +497,7 @@ export class SimulationEngine {
     this.previousNodeValues = new Map();
     this.lastDataChangeTime = new Map();
     this.lastClockEdgeTime = new Map();
+    this.pendingEvents = [];
     
     // Re-initialize
     this.circuit.components.forEach(comp => {
