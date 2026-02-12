@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { ComponentPalette } from '@/components/sidebar/ComponentPalette';
 import { PropertiesPanel } from '@/components/sidebar/PropertiesPanel';
@@ -10,6 +10,7 @@ import { useCircuit } from '@/hooks/useCircuit';
 import { useSimulation } from '@/hooks/useSimulation';
 
 const Index: React.FC = () => {
+  const [waveformExpanded, setWaveformExpanded] = useState(false);
   const {
     circuit,
     canvasState,
@@ -154,33 +155,39 @@ const Index: React.FC = () => {
           <ResizablePanel defaultSize={65}>
             <ResizablePanelGroup direction="vertical">
               {/* Circuit Canvas */}
-              <ResizablePanel defaultSize={60} minSize={30}>
-                <CircuitCanvas
-                  components={circuit.components}
-                  wires={circuit.wires}
-                  canvasState={canvasState}
-                  violations={simState.violations}
-                  onSelectComponent={selectComponent}
-                  onSelectWire={selectWire}
-                  onUpdateComponentPosition={updateComponentPosition}
-                  onStartWiring={startWiring}
-                  onCompleteWiring={completeWiring}
-                  onCancelWiring={cancelWiring}
-                  onAddComponent={addComponent}
-                  onZoom={setZoom}
-                  onPan={setPan}
-                />
-              </ResizablePanel>
+              {!waveformExpanded && (
+                <>
+                  <ResizablePanel defaultSize={60} minSize={20}>
+                    <CircuitCanvas
+                      components={circuit.components}
+                      wires={circuit.wires}
+                      canvasState={canvasState}
+                      violations={simState.violations}
+                      onSelectComponent={selectComponent}
+                      onSelectWire={selectWire}
+                      onUpdateComponentPosition={updateComponentPosition}
+                      onStartWiring={startWiring}
+                      onCompleteWiring={completeWiring}
+                      onCancelWiring={cancelWiring}
+                      onAddComponent={addComponent}
+                      onZoom={setZoom}
+                      onPan={setPan}
+                    />
+                  </ResizablePanel>
 
-              <ResizableHandle className="h-1 bg-border hover:bg-primary/50 transition-colors" />
+                  <ResizableHandle className="h-1 bg-border hover:bg-primary/50 transition-colors" />
+                </>
+              )}
 
               {/* Waveform Viewer */}
-              <ResizablePanel defaultSize={40} minSize={20}>
+              <ResizablePanel defaultSize={waveformExpanded ? 100 : 40} minSize={20}>
                 <WaveformViewer
                   signals={simState.signals}
                   violations={simState.violations}
                   currentTime={simState.currentTime}
                   endTime={simState.endTime}
+                  isExpanded={waveformExpanded}
+                  onToggleExpand={() => setWaveformExpanded(prev => !prev)}
                 />
               </ResizablePanel>
             </ResizablePanelGroup>
