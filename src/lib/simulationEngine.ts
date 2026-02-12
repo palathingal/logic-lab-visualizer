@@ -374,7 +374,20 @@ export class SimulationEngine {
           const nodeId = `${comp.id}.${outputPin.id}`;
           const currentValue = this.nodeValues.get(nodeId);
 
-          if (currentValue !== newValue) {
+          // Check if there's already a pending event for this node
+          const existingPending = this.pendingEvents.find(e => e.nodeId === nodeId);
+
+          if (existingPending) {
+            // If the desired output changed while an event is in-flight, update the pending event's value
+            // but do NOT reset its scheduled time (preserves the original delay timing)
+            if (existingPending.newValue !== newValue) {
+              existingPending.newValue = newValue;
+            }
+            // If pending value matches current nodeValue, cancel the event (input reverted)
+            if (newValue === currentValue) {
+              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== nodeId);
+            }
+          } else if (currentValue !== newValue) {
             const fanout = this.getFanout(comp);
             const delay = this.calculateDelay(comp, fanout);
 
@@ -392,8 +405,6 @@ export class SimulationEngine {
             } else {
               // Schedule the output change after propagation delay
               const eventTime = this.state.currentTime + delay;
-              // Remove any already-pending event for this node (superseded)
-              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== nodeId);
               this.pendingEvents.push({
                 time: eventTime,
                 nodeId,
