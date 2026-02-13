@@ -24,7 +24,20 @@ export type SourceType =
   | 'CLOCK' 
   | 'CONSTANT';
 
-export type ComponentType = GateType | SequentialType | SourceType | 'OUTPUT';
+export type ComponentType = GateType | SequentialType | SourceType | 'OUTPUT' | 'CUSTOM';
+
+// Custom component definition - stores an internal sub-circuit
+export interface CustomComponentDef {
+  id: string;
+  name: string;
+  internalCircuit: {
+    components: CircuitComponent[];
+    wires: Wire[];
+  };
+  inputPins: { name: string; internalComponentId: string; internalPinId: string }[];
+  outputPins: { name: string; internalComponentId: string; internalPinId: string }[];
+  pinConfiguration: Omit<Pin, 'id' | 'connectedWireId'>[];
+}
 
 export interface TimingParameters {
   propagationDelay: number; // nanoseconds
@@ -61,6 +74,8 @@ export interface CircuitComponent {
   clockEdge?: 'rising' | 'falling';
   // For sources
   pattern?: InputPattern;
+  // For custom components
+  customComponentDefId?: string;
 }
 
 export interface Wire {
@@ -77,6 +92,7 @@ export interface Circuit {
   name: string;
   components: CircuitComponent[];
   wires: Wire[];
+  customComponents: CustomComponentDef[];
   metadata: {
     created: Date;
     modified: Date;

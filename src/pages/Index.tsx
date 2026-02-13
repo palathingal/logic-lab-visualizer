@@ -8,9 +8,17 @@ import { WaveformViewer } from '@/components/waveform/WaveformViewer';
 import { SimulationToolbar } from '@/components/toolbar/SimulationToolbar';
 import { useCircuit } from '@/hooks/useCircuit';
 import { useSimulation } from '@/hooks/useSimulation';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const Index: React.FC = () => {
   const [waveformExpanded, setWaveformExpanded] = useState(false);
+  const [showCustomDialog, setShowCustomDialog] = useState(false);
+  const [customComponentName, setCustomComponentName] = useState('');
+  const [multiSelectIds, setMultiSelectIds] = useState<string[]>([]);
+  const [isMultiSelecting, setIsMultiSelecting] = useState(false);
   const {
     circuit,
     canvasState,
@@ -32,6 +40,9 @@ const Index: React.FC = () => {
     saveCircuitToFile,
     loadCircuitFromFile,
     updateCircuitName,
+    createCustomComponent,
+    addCustomComponentInstance,
+    removeCustomComponent,
   } = useCircuit();
 
   const {
@@ -146,7 +157,21 @@ const Index: React.FC = () => {
         <ResizablePanelGroup direction="horizontal">
           {/* Left Sidebar - Component Palette */}
           <ResizablePanel defaultSize={15} minSize={12} maxSize={25}>
-            <ComponentPalette />
+            <ComponentPalette 
+              customComponents={circuit.customComponents}
+              onAddCustomInstance={addCustomComponentInstance}
+              onRemoveCustomComponent={removeCustomComponent}
+              onStartCreateCustom={() => {
+                if (canvasState.selectedComponentId) {
+                  setMultiSelectIds([canvasState.selectedComponentId]);
+                  setIsMultiSelecting(true);
+                } else {
+                  setIsMultiSelecting(true);
+                  setMultiSelectIds([]);
+                }
+              }}
+              isMultiSelecting={isMultiSelecting}
+            />
           </ResizablePanel>
 
           <ResizableHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
@@ -163,7 +188,16 @@ const Index: React.FC = () => {
                       wires={circuit.wires}
                       canvasState={canvasState}
                       violations={simState.violations}
-                      onSelectComponent={selectComponent}
+                      customComponents={circuit.customComponents}
+                      onSelectComponent={(id) => {
+                        if (isMultiSelecting && id) {
+                          setMultiSelectIds(prev => 
+                            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                          );
+                        } else {
+                          selectComponent(id);
+                        }
+                      }}
                       onSelectWire={selectWire}
                       onUpdateComponentPosition={updateComponentPosition}
                       onStartWiring={startWiring}
@@ -172,6 +206,7 @@ const Index: React.FC = () => {
                       onAddComponent={addComponent}
                       onZoom={setZoom}
                       onPan={setPan}
+                      onRemoveWire={removeWire}
                     />
                   </ResizablePanel>
 
@@ -236,6 +271,73 @@ const Index: React.FC = () => {
           <span>v1.0.0</span>
         </div>
       </div>
+      {/* Multi-select toolbar */}
+      {isMultiSelecting && (
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-card/95 border border-primary/30 rounded-lg shadow-xl z-50">
+          <span className="text-xs text-primary font-medium">
+            {multiSelectIds.length} component{multiSelectIds.length !== 1 ? 's' : ''} selected
+          </span>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 text-xs"
+            disabled={multiSelectIds.length < 2}
+            onClick={() => {
+              setShowCustomDialog(true);
+              setCustomComponentName('');
+            }}
+          >
+            Create Custom
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => {
+              setIsMultiSelecting(false);
+              setMultiSelectIds([]);
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {/* Custom component naming dialog */}
+      <Dialog open={showCustomDialog} onOpenChange={setShowCustomDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Name Your Custom Component</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="custom-name">Component Name</Label>
+            <Input
+              id="custom-name"
+              value={customComponentName}
+              onChange={(e) => setCustomComponentName(e.target.value)}
+              placeholder="e.g., HalfAdder, MUX4, ALU"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              {multiSelectIds.length} components will be packaged into a reusable block.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCustomDialog(false)}>Cancel</Button>
+            <Button
+              disabled={!customComponentName.trim()}
+              onClick={() => {
+                createCustomComponent(multiSelectIds, customComponentName.trim());
+                setShowCustomDialog(false);
+                setIsMultiSelecting(false);
+                setMultiSelectIds([]);
+              }}
+            >
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

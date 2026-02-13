@@ -6,7 +6,8 @@ import {
   CanvasState, 
   ComponentType,
   Pin,
-  InputPattern
+  InputPattern,
+  CustomComponentDef
 } from '@/types/circuit';
 import { getComponentDefinition } from '@/lib/componentDefinitions';
 
@@ -21,6 +22,7 @@ export const useCircuit = () => {
     name: 'New Circuit',
     components: [],
     wires: [],
+    customComponents: [],
     metadata: {
       created: new Date(),
       modified: new Date(),
@@ -319,6 +321,7 @@ export const useCircuit = () => {
       name: 'New Circuit',
       components: [],
       wires: [],
+      customComponents: [],
       metadata: {
         created: new Date(),
         modified: new Date(),
@@ -345,6 +348,137 @@ export const useCircuit = () => {
     }));
   }, []);
 
+  // Create a custom component from selected components
+  const createCustomComponent = useCallback((componentIds: string[], name: string): string | null => {
+    const selectedComponents = circuit.components.filter(c => componentIds.includes(c.id));
+    if (selectedComponents.length < 2) return null;
+
+    // Find internal wires (both endpoints inside selection)
+    const internalWires = circuit.wires.filter(w =>
+      componentIds.includes(w.sourceComponentId) && componentIds.includes(w.targetComponentId)
+    );
+
+    // Find external input pins (wires coming from outside, or unconnected input pins)
+    const inputPins: CustomComponentDef['inputPins'] = [];
+    const outputPins: CustomComponentDef['outputPins'] = [];
+
+    selectedComponents.forEach(comp => {
+      comp.pins.forEach(pin => {
+        if (pin.type === 'input') {
+          const hasInternalSource = internalWires.some(w =>
+            w.targetComponentId === comp.id && w.targetPinId === pin.id
+          );
+          if (!hasInternalSource) {
+            inputPins.push({
+              name: `${comp.name}.${pin.name}`,
+              internalComponentId: comp.id,
+              internalPinId: pin.id,
+            });
+          }
+        } else if (pin.type === 'output') {
+          const hasInternalTarget = internalWires.some(w =>
+            w.sourceComponentId === comp.id && w.sourcePinId === pin.id
+          );
+          // Expose outputs that connect externally or have no internal consumers
+          const hasExternalTarget = circuit.wires.some(w =>
+            w.sourceComponentId === comp.id && w.sourcePinId === pin.id &&
+            !componentIds.includes(w.targetComponentId)
+          );
+          if (!hasInternalTarget || hasExternalTarget) {
+            outputPins.push({
+              name: `${comp.name}.${pin.name}`,
+              internalComponentId: comp.id,
+              internalPinId: pin.id,
+            });
+          }
+        }
+      });
+    });
+
+    if (inputPins.length === 0 && outputPins.length === 0) return null;
+
+    // Build pin configuration for rendering
+    const totalHeight = Math.max(inputPins.length, outputPins.length) * 20 + 20;
+    const pinConfig: Omit<Pin, 'id' | 'connectedWireId'>[] = [
+      ...inputPins.map((p, i) => ({
+        name: p.name.split('.').pop() || `IN${i}`,
+        type: 'input' as const,
+        position: { x: 0, y: 15 + i * 20 },
+      })),
+      ...outputPins.map((p, i) => ({
+        name: p.name.split('.').pop() || `OUT${i}`,
+        type: 'output' as const,
+        position: { x: 80, y: 15 + i * 20 },
+      })),
+    ];
+
+    const customDef: CustomComponentDef = {
+      id: generateId(),
+      name,
+      internalCircuit: {
+        components: selectedComponents,
+        wires: internalWires,
+      },
+      inputPins,
+      outputPins,
+      pinConfiguration: pinConfig,
+    };
+
+    // Remove selected components and their wires from the main circuit
+    setCircuit(prev => ({
+      ...prev,
+      customComponents: [...prev.customComponents, customDef],
+      components: prev.components.filter(c => !componentIds.includes(c.id)),
+      wires: prev.wires.filter(w =>
+        !componentIds.includes(w.sourceComponentId) && !componentIds.includes(w.targetComponentId)
+      ),
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+
+    return customDef.id;
+  }, [circuit.components, circuit.wires]);
+
+  // Add an instance of a custom component to the canvas
+  const addCustomComponentInstance = useCallback((customDefId: string, position: { x: number; y: number }) => {
+    const customDef = circuit.customComponents.find(c => c.id === customDefId);
+    if (!customDef) return null;
+
+    const componentId = generateId();
+    const pins: Pin[] = customDef.pinConfiguration.map((pinConfig, index) => ({
+      id: `pin_${index}`,
+      name: pinConfig.name,
+      type: pinConfig.type,
+      position: pinConfig.position,
+    }));
+
+    const newComponent: CircuitComponent = {
+      id: componentId,
+      type: 'CUSTOM',
+      name: `${customDef.name}_${circuit.components.filter(c => c.customComponentDefId === customDefId).length + 1}`,
+      position,
+      pins,
+      timing: { propagationDelay: 5, riseTime: 0.5, fallTime: 0.5 },
+      customComponentDefId: customDefId,
+    };
+
+    setCircuit(prev => ({
+      ...prev,
+      components: [...prev.components, newComponent],
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+
+    return componentId;
+  }, [circuit.customComponents, circuit.components]);
+
+  const removeCustomComponent = useCallback((customDefId: string) => {
+    setCircuit(prev => ({
+      ...prev,
+      customComponents: prev.customComponents.filter(c => c.id !== customDefId),
+      components: prev.components.filter(c => c.customComponentDefId !== customDefId),
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+  }, []);
+
   return {
     circuit,
     canvasState,
@@ -368,5 +502,8 @@ export const useCircuit = () => {
     saveCircuitToFile,
     loadCircuitFromFile,
     updateCircuitName,
+    createCustomComponent,
+    addCustomComponentInstance,
+    removeCustomComponent,
   };
 };

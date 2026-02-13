@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { CircuitComponent, Wire, CanvasState, ComponentType, TimingViolation } from '@/types/circuit';
+import { CircuitComponent, Wire, CanvasState, ComponentType, TimingViolation, CustomComponentDef } from '@/types/circuit';
 import { GateSVG } from '@/components/gates/GateSVG';
 import { getComponentDefinition } from '@/lib/componentDefinitions';
 
@@ -8,6 +8,7 @@ interface CircuitCanvasProps {
   wires: Wire[];
   canvasState: CanvasState;
   violations: TimingViolation[];
+  customComponents: CustomComponentDef[];
   onSelectComponent: (id: string | null) => void;
   onSelectWire: (id: string | null) => void;
   onUpdateComponentPosition: (id: string, position: { x: number; y: number }) => void;
@@ -17,6 +18,7 @@ interface CircuitCanvasProps {
   onAddComponent: (type: ComponentType, position: { x: number; y: number }) => void;
   onZoom: (zoom: number) => void;
   onPan: (pan: { x: number; y: number }) => void;
+  onRemoveWire: (wireId: string) => void;
 }
 
 export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
@@ -24,6 +26,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   wires,
   canvasState,
   violations,
+  customComponents,
   onSelectComponent,
   onSelectWire,
   onUpdateComponentPosition,
@@ -33,6 +36,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   onAddComponent,
   onZoom,
   onPan,
+  onRemoveWire,
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -142,7 +146,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Get wire path
+  // Get wire path with improved orthogonal routing
   const getWirePath = (wire: Wire): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
@@ -159,10 +163,21 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const endX = targetComp.position.x + targetPin.position.x;
     const endY = targetComp.position.y + targetPin.position.y;
     
-    // Create orthogonal path
-    const midX = (startX + endX) / 2;
+    // Improved routing with offset segments to avoid overlapping with components
+    const gapOut = 15;
+    const gapIn = 15;
+    const sx = startX + gapOut;
+    const ex = endX - gapIn;
     
-    return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
+    if (sx < ex) {
+      // Simple case: source is left of target
+      const midX = (sx + ex) / 2;
+      return `M ${startX} ${startY} H ${sx} H ${midX} V ${endY} H ${ex} H ${endX}`;
+    } else {
+      // Source is right of target — route around
+      const midY = (startY + endY) / 2;
+      return `M ${startX} ${startY} H ${sx} V ${midY} H ${ex} V ${endY} H ${endX}`;
+    }
   };
 
   // Get temporary wire path while wiring
@@ -207,21 +222,51 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           transformOrigin: '0 0',
         }}
       >
-        {/* Wires */}
-        {wires.map(wire => (
-          <path
-            key={wire.id}
-            d={getWirePath(wire)}
-            fill="none"
-            stroke={canvasState.selectedWireId === wire.id ? 'hsl(var(--primary))' : 'hsl(var(--wire))'}
-            strokeWidth="2"
-            className="pointer-events-auto cursor-pointer hover:stroke-[hsl(var(--wire-active))]"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectWire(wire.id);
-            }}
-          />
-        ))}
+        {/* Wires - invisible fat hit area + visible wire */}
+        {wires.map(wire => {
+          const path = getWirePath(wire);
+          const isSelected = canvasState.selectedWireId === wire.id;
+          return (
+            <g key={wire.id}>
+              {/* Invisible wide hit area for easy clicking */}
+              <path
+                d={path}
+                fill="none"
+                stroke="transparent"
+                strokeWidth="12"
+                className="pointer-events-auto cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectWire(wire.id);
+                }}
+              />
+              {/* Visible wire */}
+              <path
+                d={path}
+                fill="none"
+                stroke={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--wire))'}
+                strokeWidth={isSelected ? 3 : 2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none"
+              />
+              {/* Selection highlight dots at endpoints */}
+              {isSelected && (() => {
+                const sourceComp = components.find(c => c.id === wire.sourceComponentId);
+                const targetComp = components.find(c => c.id === wire.targetComponentId);
+                const sourcePin = sourceComp?.pins.find(p => p.id === wire.sourcePinId);
+                const targetPin = targetComp?.pins.find(p => p.id === wire.targetPinId);
+                if (!sourceComp || !targetComp || !sourcePin || !targetPin) return null;
+                return (
+                  <>
+                    <circle cx={sourceComp.position.x + sourcePin.position.x} cy={sourceComp.position.y + sourcePin.position.y} r="4" fill="hsl(var(--primary))" />
+                    <circle cx={targetComp.position.x + targetPin.position.x} cy={targetComp.position.y + targetPin.position.y} r="4" fill="hsl(var(--primary))" />
+                  </>
+                );
+              })()}
+            </g>
+          );
+        })}
         
         {/* Temporary wire while wiring */}
         {tempWirePath && (
@@ -259,7 +304,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
               }}
               onMouseDown={(e) => handleComponentMouseDown(e, component.id)}
             >
-              <GateSVG type={component.type} isSelected={isSelected} hasViolation={hasViolation} />
+              <GateSVG 
+                type={component.type} 
+                isSelected={isSelected} 
+                hasViolation={hasViolation}
+                customName={component.type === 'CUSTOM' ? customComponents.find(c => c.id === component.customComponentDefId)?.name : undefined}
+                pinCount={component.pins.length}
+              />
               
               {/* Pin hitboxes */}
               {component.pins.map(pin => (
@@ -297,6 +348,25 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       <div className="absolute bottom-4 right-4 px-2 py-1 bg-card/80 rounded text-xs font-mono text-muted-foreground">
         {Math.round(canvasState.zoom * 100)}%
       </div>
+
+      {/* Selected wire toolbar */}
+      {canvasState.selectedWireId && (
+        <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 bg-card/90 border border-border rounded-lg shadow-lg">
+          <span className="text-xs text-muted-foreground font-mono">Wire selected</span>
+          <button
+            className="px-2 py-1 text-xs bg-destructive/20 text-destructive hover:bg-destructive/30 rounded transition-colors"
+            onClick={() => onRemoveWire(canvasState.selectedWireId!)}
+          >
+            Delete
+          </button>
+          <button
+            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 text-muted-foreground rounded transition-colors"
+            onClick={() => onSelectWire(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Wiring indicator */}
       {canvasState.isWiring && (

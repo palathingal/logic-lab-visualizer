@@ -55,7 +55,7 @@ export class SimulationEngine {
   private pendingEvents: SimulationEvent[]; // Delay-based event queue
 
   constructor() {
-    this.circuit = { id: '', name: '', components: [], wires: [], metadata: { created: new Date(), modified: new Date(), version: '1.0' } };
+    this.circuit = { id: '', name: '', components: [], wires: [], customComponents: [], metadata: { created: new Date(), modified: new Date(), version: '1.0' } };
     this.nodeValues = new Map();
     this.previousNodeValues = new Map();
     this.lastDataChangeTime = new Map();

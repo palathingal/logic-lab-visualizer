@@ -6,9 +6,11 @@ interface GateSVGProps {
   isSelected?: boolean;
   isActive?: boolean;
   hasViolation?: boolean;
+  customName?: string;
+  pinCount?: number;
 }
 
-export const GateSVG: React.FC<GateSVGProps> = ({ type, isSelected, isActive, hasViolation }) => {
+export const GateSVG: React.FC<GateSVGProps> = ({ type, isSelected, isActive, hasViolation, customName, pinCount }) => {
   const strokeColor = hasViolation 
     ? 'hsl(var(--destructive))' 
     : isSelected 
@@ -223,6 +225,18 @@ export const GateSVG: React.FC<GateSVGProps> = ({ type, isSelected, isActive, ha
           <text x="14" y="25" fill="hsl(var(--foreground))" fontSize="9" fontFamily="monospace">OUT</text>
         </svg>
       );
+
+    case 'CUSTOM': {
+      const height = Math.max(50, (pinCount || 4) * 12 + 20);
+      const label = customName || 'CUSTOM';
+      const displayLabel = label.length > 6 ? label.slice(0, 6) + '…' : label;
+      return (
+        <svg width="80" height={height} viewBox={`0 0 80 ${height}`} className={glowFilter}>
+          <rect x="5" y="5" width="70" height={height - 10} fill={fillColor} stroke="hsl(var(--chart-5))" strokeWidth="2" rx="4" strokeDasharray="4 2" />
+          <text x="40" y={height / 2 + 4} fill="hsl(var(--foreground))" fontSize="9" fontFamily="monospace" textAnchor="middle">{displayLabel}</text>
+        </svg>
+      );
+    }
 
     default:
       return (
