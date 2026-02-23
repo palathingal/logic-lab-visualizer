@@ -17,6 +17,7 @@ interface CircuitCanvasProps {
   onCompleteWiring: (componentId: string, pinId: string) => void;
   onCancelWiring: () => void;
   onAddComponent: (type: ComponentType, position: { x: number; y: number }) => void;
+  onAddCustomInstance: (customDefId: string, position: { x: number; y: number }) => string | null;
   onZoom: (zoom: number) => void;
   onPan: (pan: { x: number; y: number }) => void;
   onRemoveWire: (wireId: string) => void;
@@ -36,6 +37,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   onCompleteWiring,
   onCancelWiring,
   onAddComponent,
+  onAddCustomInstance,
   onZoom,
   onPan,
   onRemoveWire,
@@ -140,9 +142,17 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       const gridSize = 20;
       pos.x = Math.round(pos.x / gridSize) * gridSize;
       pos.y = Math.round(pos.y / gridSize) * gridSize;
-      onAddComponent(type, pos);
+
+      if (type === 'CUSTOM') {
+        const customDefId = e.dataTransfer.getData('customDefId');
+        if (customDefId) {
+          onAddCustomInstance(customDefId, pos);
+        }
+      } else {
+        onAddComponent(type, pos);
+      }
     }
-  }, [getCanvasPosition, onAddComponent]);
+  }, [getCanvasPosition, onAddComponent, onAddCustomInstance]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -304,9 +314,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
               style={{
                 left: component.position.x,
                 top: component.position.y,
-                outline: isMultiSelected ? '2px solid hsl(var(--primary))' : 'none',
-                outlineOffset: '4px',
-                borderRadius: '4px',
+                outline: isMultiSelected ? '1.5px dashed hsl(var(--primary) / 0.6)' : 'none',
+                outlineOffset: '6px',
+                borderRadius: '6px',
+                boxShadow: isMultiSelected ? '0 0 12px 2px hsl(var(--primary) / 0.15)' : 'none',
               }}
               onMouseDown={(e) => handleComponentMouseDown(e, component.id)}
             >
