@@ -206,6 +206,7 @@ const Index: React.FC = () => {
                       onCompleteWiring={completeWiring}
                       onCancelWiring={cancelWiring}
                       onAddComponent={addComponent}
+                      onAddCustomInstance={addCustomComponentInstance}
                       onZoom={setZoom}
                       onPan={setPan}
                       onRemoveWire={removeWire}
