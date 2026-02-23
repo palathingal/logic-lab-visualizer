@@ -9,6 +9,7 @@ interface CircuitCanvasProps {
   canvasState: CanvasState;
   violations: TimingViolation[];
   customComponents: CustomComponentDef[];
+  multiSelectIds?: string[];
   onSelectComponent: (id: string | null) => void;
   onSelectWire: (id: string | null) => void;
   onUpdateComponentPosition: (id: string, position: { x: number; y: number }) => void;
@@ -27,6 +28,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   canvasState,
   violations,
   customComponents,
+  multiSelectIds = [],
   onSelectComponent,
   onSelectWire,
   onUpdateComponentPosition,
@@ -292,15 +294,19 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         {components.map(component => {
           const definition = getComponentDefinition(component.type);
           const isSelected = canvasState.selectedComponentId === component.id;
+          const isMultiSelected = multiSelectIds.includes(component.id);
           const hasViolation = violations.some(v => v.componentId === component.id);
           
           return (
             <div
               key={component.id}
-              className={`absolute gate-component cursor-move ${isSelected ? 'z-10' : ''} ${hasViolation ? 'animate-pulse' : ''}`}
+              className={`absolute gate-component cursor-move ${isSelected || isMultiSelected ? 'z-10' : ''} ${hasViolation ? 'animate-pulse' : ''}`}
               style={{
                 left: component.position.x,
                 top: component.position.y,
+                outline: isMultiSelected ? '2px solid hsl(var(--primary))' : 'none',
+                outlineOffset: '4px',
+                borderRadius: '4px',
               }}
               onMouseDown={(e) => handleComponentMouseDown(e, component.id)}
             >

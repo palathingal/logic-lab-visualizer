@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { ComponentPalette } from '@/components/sidebar/ComponentPalette';
 import { PropertiesPanel } from '@/components/sidebar/PropertiesPanel';
@@ -189,6 +190,7 @@ const Index: React.FC = () => {
                       canvasState={canvasState}
                       violations={simState.violations}
                       customComponents={circuit.customComponents}
+                      multiSelectIds={isMultiSelecting ? multiSelectIds : []}
                       onSelectComponent={(id) => {
                         if (isMultiSelecting && id) {
                           setMultiSelectIds(prev => 
@@ -327,7 +329,12 @@ const Index: React.FC = () => {
             <Button
               disabled={!customComponentName.trim()}
               onClick={() => {
-                createCustomComponent(multiSelectIds, customComponentName.trim());
+                const result = createCustomComponent(multiSelectIds, customComponentName.trim());
+                if (result) {
+                  toast.success(`Custom component "${customComponentName.trim()}" created!`);
+                } else {
+                  toast.error('Failed to create custom component. Ensure at least 2 connected components are selected with exposed pins.');
+                }
                 setShowCustomDialog(false);
                 setIsMultiSelecting(false);
                 setMultiSelectIds([]);
