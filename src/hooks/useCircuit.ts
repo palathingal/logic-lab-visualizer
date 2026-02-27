@@ -412,6 +412,13 @@ export const useCircuit = () => {
       })),
     ];
 
+    // Calculate effective propagation delay as sum of all internal components' delays
+    const effectivePropagationDelay = selectedComponents.reduce(
+      (sum, comp) => sum + (comp.timing.propagationDelay || 0), 0
+    );
+    const maxRiseTime = Math.max(...selectedComponents.map(c => c.timing.riseTime || 0));
+    const maxFallTime = Math.max(...selectedComponents.map(c => c.timing.fallTime || 0));
+
     const customDef: CustomComponentDef = {
       id: generateId(),
       name,
@@ -422,6 +429,11 @@ export const useCircuit = () => {
       inputPins,
       outputPins,
       pinConfiguration: pinConfig,
+      effectiveTiming: {
+        propagationDelay: effectivePropagationDelay,
+        riseTime: maxRiseTime,
+        fallTime: maxFallTime,
+      },
     };
 
     // Remove selected components and their wires from the main circuit
@@ -457,7 +469,11 @@ export const useCircuit = () => {
       name: `${customDef.name}_${circuit.components.filter(c => c.customComponentDefId === customDefId).length + 1}`,
       position,
       pins,
-      timing: { propagationDelay: 5, riseTime: 0.5, fallTime: 0.5 },
+      timing: {
+        propagationDelay: customDef.effectiveTiming?.propagationDelay ?? 5,
+        riseTime: customDef.effectiveTiming?.riseTime ?? 0.5,
+        fallTime: customDef.effectiveTiming?.fallTime ?? 0.5,
+      },
       customComponentDefId: customDefId,
     };
 
