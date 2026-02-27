@@ -37,6 +37,11 @@ export interface CustomComponentDef {
   inputPins: { name: string; internalComponentId: string; internalPinId: string }[];
   outputPins: { name: string; internalComponentId: string; internalPinId: string }[];
   pinConfiguration: Omit<Pin, 'id' | 'connectedWireId'>[];
+  effectiveTiming?: {
+    propagationDelay: number;
+    riseTime: number;
+    fallTime: number;
+  };
 }
 
 export interface TimingParameters {
