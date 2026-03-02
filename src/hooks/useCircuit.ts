@@ -495,6 +495,163 @@ export const useCircuit = () => {
     }));
   }, []);
 
+  // --- Custom component editing ---
+  const [editingCustomDefId, setEditingCustomDefId] = useState<string | null>(null);
+  const [stashedCircuitState, setStashedCircuitState] = useState<{ components: CircuitComponent[]; wires: Wire[] } | null>(null);
+
+  const startEditCustomComponent = useCallback((customDefId: string) => {
+    const customDef = circuit.customComponents.find(c => c.id === customDefId);
+    if (!customDef) return;
+
+    // Stash current canvas state
+    setStashedCircuitState({
+      components: circuit.components,
+      wires: circuit.wires,
+    });
+    setEditingCustomDefId(customDefId);
+
+    // Load internal circuit onto canvas
+    setCircuit(prev => ({
+      ...prev,
+      components: customDef.internalCircuit.components,
+      wires: customDef.internalCircuit.wires,
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+
+    setCanvasState(prev => ({
+      ...prev,
+      selectedComponentId: null,
+      selectedWireId: null,
+      isWiring: false,
+      wireStartPin: null,
+    }));
+  }, [circuit.customComponents, circuit.components, circuit.wires]);
+
+  const saveEditCustomComponent = useCallback((newName?: string) => {
+    if (!editingCustomDefId || !stashedCircuitState) return;
+
+    const currentComponents = circuit.components;
+    const currentWires = circuit.wires;
+
+    // Recalculate pins and timing from edited internal circuit
+    const internalWires = currentWires;
+
+    const inputPins: CustomComponentDef['inputPins'] = [];
+    const outputPins: CustomComponentDef['outputPins'] = [];
+
+    currentComponents.forEach(comp => {
+      comp.pins.forEach(pin => {
+        if (pin.type === 'input') {
+          const hasInternalSource = internalWires.some(w =>
+            w.targetComponentId === comp.id && w.targetPinId === pin.id
+          );
+          if (!hasInternalSource) {
+            inputPins.push({
+              name: `${comp.name}.${pin.name}`,
+              internalComponentId: comp.id,
+              internalPinId: pin.id,
+            });
+          }
+        } else if (pin.type === 'output') {
+          const hasInternalTarget = internalWires.some(w =>
+            w.sourceComponentId === comp.id && w.sourcePinId === pin.id
+          );
+          if (!hasInternalTarget) {
+            outputPins.push({
+              name: `${comp.name}.${pin.name}`,
+              internalComponentId: comp.id,
+              internalPinId: pin.id,
+            });
+          }
+        }
+      });
+    });
+
+    const totalHeight = Math.max(inputPins.length, outputPins.length) * 20 + 20;
+    const pinConfig: Omit<Pin, 'id' | 'connectedWireId'>[] = [
+      ...inputPins.map((p, i) => ({
+        name: p.name.split('.').pop() || `IN${i}`,
+        type: 'input' as const,
+        position: { x: 0, y: 15 + i * 20 },
+      })),
+      ...outputPins.map((p, i) => ({
+        name: p.name.split('.').pop() || `OUT${i}`,
+        type: 'output' as const,
+        position: { x: 80, y: 15 + i * 20 },
+      })),
+    ];
+
+    const effectivePropagationDelay = currentComponents.reduce(
+      (sum, comp) => sum + (comp.timing.propagationDelay || 0), 0
+    );
+    const maxRiseTime = Math.max(...currentComponents.map(c => c.timing.riseTime || 0));
+    const maxFallTime = Math.max(...currentComponents.map(c => c.timing.fallTime || 0));
+
+    setCircuit(prev => ({
+      ...prev,
+      components: stashedCircuitState.components,
+      wires: stashedCircuitState.wires,
+      customComponents: prev.customComponents.map(cd =>
+        cd.id === editingCustomDefId
+          ? {
+              ...cd,
+              name: newName || cd.name,
+              internalCircuit: { components: currentComponents, wires: currentWires },
+              inputPins,
+              outputPins,
+              pinConfiguration: pinConfig,
+              effectiveTiming: {
+                propagationDelay: effectivePropagationDelay,
+                riseTime: maxRiseTime,
+                fallTime: maxFallTime,
+              },
+            }
+          : cd
+      ),
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+
+    // Update timing on all instances of this custom component
+    setCircuit(prev => ({
+      ...prev,
+      components: prev.components.map(c =>
+        c.customComponentDefId === editingCustomDefId
+          ? {
+              ...c,
+              timing: {
+                propagationDelay: effectivePropagationDelay,
+                riseTime: maxRiseTime,
+                fallTime: maxFallTime,
+              },
+              pins: pinConfig.map((pc, i) => ({
+                id: `pin_${i}`,
+                name: pc.name,
+                type: pc.type,
+                position: pc.position,
+              })),
+            }
+          : c
+      ),
+    }));
+
+    setEditingCustomDefId(null);
+    setStashedCircuitState(null);
+  }, [editingCustomDefId, stashedCircuitState, circuit.components, circuit.wires]);
+
+  const cancelEditCustomComponent = useCallback(() => {
+    if (!stashedCircuitState) return;
+
+    setCircuit(prev => ({
+      ...prev,
+      components: stashedCircuitState.components,
+      wires: stashedCircuitState.wires,
+      metadata: { ...prev.metadata, modified: new Date() },
+    }));
+
+    setEditingCustomDefId(null);
+    setStashedCircuitState(null);
+  }, [stashedCircuitState]);
+
   return {
     circuit,
     canvasState,
@@ -521,5 +678,9 @@ export const useCircuit = () => {
     createCustomComponent,
     addCustomComponentInstance,
     removeCustomComponent,
+    editingCustomDefId,
+    startEditCustomComponent,
+    saveEditCustomComponent,
+    cancelEditCustomComponent,
   };
 };

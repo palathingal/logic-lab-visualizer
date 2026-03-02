@@ -5,13 +5,14 @@ import { GateSVG } from '@/components/gates/GateSVG';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Package, Trash2, Plus } from 'lucide-react';
+import { Package, Trash2, Plus, Pencil } from 'lucide-react';
 
 interface ComponentPaletteProps {
   customComponents: CustomComponentDef[];
   onAddCustomInstance: (customDefId: string, position: { x: number; y: number }) => string | null;
   onRemoveCustomComponent: (customDefId: string) => void;
   onStartCreateCustom: () => void;
+  onEditCustomComponent: (customDefId: string) => void;
   isMultiSelecting: boolean;
 }
 
@@ -27,6 +28,7 @@ export const ComponentPalette: React.FC<ComponentPaletteProps> = ({
   onAddCustomInstance,
   onRemoveCustomComponent,
   onStartCreateCustom,
+  onEditCustomComponent,
   isMultiSelecting,
 }) => {
   const handleDragStart = (e: React.DragEvent, type: ComponentType) => {
@@ -140,6 +142,15 @@ export const ComponentPalette: React.FC<ComponentPaletteProps> = ({
                         {customDef.inputPins.length}in / {customDef.outputPins.length}out
                       </span>
                     </div>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-primary/20 rounded transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditCustomComponent(customDef.id);
+                      }}
+                    >
+                      <Pencil className="w-3 h-3 text-primary" />
+                    </button>
                     <button
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/20 rounded transition-all"
                       onClick={(e) => {

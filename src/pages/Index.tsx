@@ -20,6 +20,7 @@ const Index: React.FC = () => {
   const [customComponentName, setCustomComponentName] = useState('');
   const [multiSelectIds, setMultiSelectIds] = useState<string[]>([]);
   const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+  const [editCustomName, setEditCustomName] = useState('');
   const {
     circuit,
     canvasState,
@@ -44,6 +45,10 @@ const Index: React.FC = () => {
     createCustomComponent,
     addCustomComponentInstance,
     removeCustomComponent,
+    editingCustomDefId,
+    startEditCustomComponent,
+    saveEditCustomComponent,
+    cancelEditCustomComponent,
   } = useCircuit();
 
   const {
@@ -162,6 +167,7 @@ const Index: React.FC = () => {
               customComponents={circuit.customComponents}
               onAddCustomInstance={addCustomComponentInstance}
               onRemoveCustomComponent={removeCustomComponent}
+              onEditCustomComponent={startEditCustomComponent}
               onStartCreateCustom={() => {
                 if (canvasState.selectedComponentId) {
                   setMultiSelectIds([canvasState.selectedComponentId]);
@@ -275,32 +281,40 @@ const Index: React.FC = () => {
         </div>
       </div>
       {/* Multi-select toolbar */}
-      {isMultiSelecting && (
+      {isMultiSelecting && !editingCustomDefId && (
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-card/95 border border-primary/30 rounded-lg shadow-xl z-50">
           <span className="text-xs text-primary font-medium">
             {multiSelectIds.length} component{multiSelectIds.length !== 1 ? 's' : ''} selected
           </span>
-          <Button
-            size="sm"
-            variant="default"
-            className="h-7 text-xs"
-            disabled={multiSelectIds.length < 2}
-            onClick={() => {
-              setShowCustomDialog(true);
-              setCustomComponentName('');
-            }}
-          >
+          <Button size="sm" variant="default" className="h-7 text-xs" disabled={multiSelectIds.length < 2}
+            onClick={() => { setShowCustomDialog(true); setCustomComponentName(''); }}>
             Create Custom
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs"
-            onClick={() => {
-              setIsMultiSelecting(false);
-              setMultiSelectIds([]);
-            }}
-          >
+          <Button size="sm" variant="ghost" className="h-7 text-xs"
+            onClick={() => { setIsMultiSelecting(false); setMultiSelectIds([]); }}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {/* Edit custom component banner */}
+      {editingCustomDefId && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-2.5 bg-accent/95 border border-primary/40 rounded-lg shadow-xl z-50 backdrop-blur-sm">
+          <span className="text-xs font-semibold text-primary">
+            ✏️ Editing: {circuit.customComponents.find(c => c.id === editingCustomDefId)?.name || 'Custom Component'}
+          </span>
+          <Input
+            value={editCustomName}
+            onChange={(e) => setEditCustomName(e.target.value)}
+            className="h-7 w-36 text-xs"
+            placeholder="Rename (optional)"
+          />
+          <Button size="sm" variant="default" className="h-7 text-xs"
+            onClick={() => { saveEditCustomComponent(editCustomName.trim() || undefined); toast.success('Custom component updated!'); setEditCustomName(''); }}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs"
+            onClick={() => { cancelEditCustomComponent(); setEditCustomName(''); }}>
             Cancel
           </Button>
         </div>
