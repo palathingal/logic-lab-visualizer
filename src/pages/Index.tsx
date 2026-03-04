@@ -73,6 +73,10 @@ const Index: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in input fields
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (canvasState.selectedComponentId) {
           removeComponent(canvasState.selectedComponentId);
