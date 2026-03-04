@@ -1,6 +1,7 @@
 import {
   Circuit,
   CircuitComponent,
+  CustomComponentDef,
   LogicValue,
   Signal,
   SignalTransition,
@@ -174,6 +175,117 @@ export class SimulationEngine {
     const logic = gateLogic[component.type];
     if (!logic) return 'X';
     return logic(inputs);
+  }
+
+  /**
+   * Evaluate a CUSTOM component by running its internal sub-circuit combinationally.
+   * Maps external input values → internal circuit → external output values.
+   */
+  private evaluateCustomComponent(component: CircuitComponent): Map<string, LogicValue> {
+    const results = new Map<string, LogicValue>();
+    const customDef = this.circuit.customComponents.find(c => c.id === component.customComponentDefId);
+    if (!customDef) return results;
+
+    const { components: intComps, wires: intWires } = customDef.internalCircuit;
+
+    // Internal node values for this evaluation
+    const intValues = new Map<string, LogicValue>();
+
+    // Initialize all internal nodes to X
+    intComps.forEach(ic => {
+      ic.pins.forEach(p => {
+        intValues.set(`${ic.id}.${p.id}`, 'X');
+      });
+    });
+
+    // Map external inputs → internal input pins
+    const extInputPins = component.pins.filter(p => p.type === 'input');
+    extInputPins.forEach((extPin, idx) => {
+      if (idx < customDef.inputPins.length) {
+        const mapping = customDef.inputPins[idx];
+        const extWire = this.circuit.wires.find(w =>
+          w.targetComponentId === component.id && w.targetPinId === extPin.id
+        );
+        const extValue = extWire
+          ? (this.nodeValues.get(`${extWire.sourceComponentId}.${extWire.sourcePinId}`) ?? 'X')
+          : 'X';
+
+        // Find the internal component's input pin and set the driving output that feeds it,
+        // or if the internal component IS an INPUT source, set its output directly
+        const intComp = intComps.find(c => c.id === mapping.internalComponentId);
+        if (intComp) {
+          if (intComp.type === 'INPUT' || intComp.type === 'CONSTANT') {
+            // Drive the output pin of the internal INPUT component
+            const outPin = intComp.pins.find(p => p.type === 'output');
+            if (outPin) intValues.set(`${intComp.id}.${outPin.id}`, extValue);
+          } else {
+            // Drive the specific input pin directly via a virtual source
+            intValues.set(`${intComp.id}.${mapping.internalPinId}`, extValue);
+          }
+        }
+      }
+    });
+
+    // Iteratively propagate through internal gates (simple fixed-point)
+    const maxIterations = intComps.length * 2 + 5;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let changed = false;
+
+      intComps.forEach(ic => {
+        if (ic.type in gateLogic) {
+          const inputPins = ic.pins.filter(p => p.type === 'input');
+          const inputs = inputPins.map(pin => {
+            const wire = intWires.find(w => w.targetComponentId === ic.id && w.targetPinId === pin.id);
+            if (!wire) {
+              // Check if this pin was directly driven by external mapping
+              return intValues.get(`${ic.id}.${pin.id}`) ?? 'X';
+            }
+            return intValues.get(`${wire.sourceComponentId}.${wire.sourcePinId}`) ?? 'X';
+          });
+
+          const logic = gateLogic[ic.type];
+          if (logic) {
+            const newVal = logic(inputs);
+            const outPin = ic.pins.find(p => p.type === 'output');
+            if (outPin) {
+              const nodeId = `${ic.id}.${outPin.id}`;
+              if (intValues.get(nodeId) !== newVal) {
+                intValues.set(nodeId, newVal);
+                changed = true;
+              }
+            }
+          }
+        } else if (ic.type === 'BUFFER') {
+          const inputPins = ic.pins.filter(p => p.type === 'input');
+          const wire = intWires.find(w => w.targetComponentId === ic.id && w.targetPinId === inputPins[0]?.id);
+          const val = wire
+            ? (intValues.get(`${wire.sourceComponentId}.${wire.sourcePinId}`) ?? 'X')
+            : (intValues.get(`${ic.id}.${inputPins[0]?.id}`) ?? 'X');
+          const outPin = ic.pins.find(p => p.type === 'output');
+          if (outPin) {
+            const nodeId = `${ic.id}.${outPin.id}`;
+            if (intValues.get(nodeId) !== val) {
+              intValues.set(nodeId, val);
+              changed = true;
+            }
+          }
+        }
+      });
+
+      if (!changed) break;
+    }
+
+    // Map internal output pins → external output pins
+    const extOutputPins = component.pins.filter(p => p.type === 'output');
+    extOutputPins.forEach((extPin, idx) => {
+      if (idx < customDef.outputPins.length) {
+        const mapping = customDef.outputPins[idx];
+        const val = intValues.get(`${mapping.internalComponentId}.${mapping.internalPinId}`) ?? 'X';
+        results.set(extPin.id, val);
+      }
+    });
+
+    return results;
   }
 
   private evaluateSequential(component: CircuitComponent, clockEdge: boolean): LogicValue | null {
@@ -414,6 +526,41 @@ export class SimulationEngine {
             }
           }
         }
+      }
+    });
+
+    // 3b. Evaluate CUSTOM components — run internal sub-circuit and schedule outputs
+    this.circuit.components.forEach(comp => {
+      if (comp.type === 'CUSTOM' && comp.customComponentDefId) {
+        const outputValues = this.evaluateCustomComponent(comp);
+        outputValues.forEach((newValue, pinId) => {
+          const nodeId = `${comp.id}.${pinId}`;
+          const currentValue = this.nodeValues.get(nodeId);
+          const existingPending = this.pendingEvents.find(e => e.nodeId === nodeId);
+
+          if (existingPending) {
+            if (existingPending.newValue !== newValue) {
+              existingPending.newValue = newValue;
+            }
+            if (newValue === currentValue) {
+              this.pendingEvents = this.pendingEvents.filter(e => e.nodeId !== nodeId);
+            }
+          } else if (currentValue !== newValue) {
+            const delay = comp.timing.propagationDelay;
+            if (delay <= 0) {
+              this.nodeValues.set(nodeId, newValue);
+              this.lastDataChangeTime.set(nodeId, this.state.currentTime);
+              this.recordTransition(comp.id, newValue, this.state.currentTime);
+            } else {
+              this.pendingEvents.push({
+                time: this.state.currentTime + delay,
+                nodeId,
+                newValue,
+                source: 'gate',
+              });
+            }
+          }
+        });
       }
     });
 
