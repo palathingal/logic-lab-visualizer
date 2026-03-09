@@ -207,38 +207,61 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       .filter(c => c.id !== wire.sourceComponentId && c.id !== wire.targetComponentId)
       .map(getCompBounds);
 
-    const channelSpacing = 8;
-    const gapOut = 20 + wireIndex * channelSpacing;
-    const gapIn = 20 + wireIndex * channelSpacing;
-    const sx = startX + gapOut;
-    const ex = endX - gapIn;
+    // Small per-wire offset to prevent exact overlap when multiple wires share a channel
+    const channelOffset = wireIndex * 4;
+    const pinGap = 15; // minimal clearance from pin
+    const sx = startX + pinGap;
+    const ex = endX - pinGap;
+
+    // Direct horizontal: pins are at same Y
+    if (Math.abs(startY - endY) < 2 && sx < ex) {
+      // Check if direct line hits any obstacle
+      let blocked = false;
+      for (const box of obstacles) {
+        if (hSegIntersectsBox(startY, sx, ex, box)) { blocked = true; break; }
+      }
+      if (!blocked) {
+        return `M ${startX} ${startY} H ${endX}`;
+      }
+    }
     
     if (sx < ex) {
-      // Simple left-to-right: try midX routing, adjust if it hits obstacles
-      let midX = (sx + ex) / 2;
+      // Left-to-right: shortest is straight midX bend
+      // Try direct vertical at midX first
+      let midX = (startX + endX) / 2 + channelOffset;
       
-      // Check if vertical segment at midX hits any obstacle
+      let hitObstacle = false;
       for (const box of obstacles) {
         if (vSegIntersectsBox(midX, startY, endY, box)) {
-          // Route around: pick left or right of obstacle
-          const leftRoute = box.left - 10 - wireIndex * channelSpacing;
-          const rightRoute = box.right + 10 + wireIndex * channelSpacing;
-          midX = Math.abs(leftRoute - sx) < Math.abs(rightRoute - sx) ? leftRoute : rightRoute;
+          hitObstacle = true;
+          // Pick the closer side to route around
+          const leftRoute = box.left - 6;
+          const rightRoute = box.right + 6;
+          // Choose whichever keeps the path shorter
+          const leftDist = Math.abs(leftRoute - startX) + Math.abs(leftRoute - endX);
+          const rightDist = Math.abs(rightRoute - startX) + Math.abs(rightRoute - endX);
+          midX = leftDist <= rightDist ? leftRoute : rightRoute;
         }
       }
       
-      return `M ${startX} ${startY} H ${sx} H ${midX} V ${endY} H ${ex} H ${endX}`;
-    } else {
-      // Right-to-left or same column: route with vertical detour
-      let midY = (startY + endY) / 2 + wireIndex * channelSpacing;
+      if (!hitObstacle && Math.abs(startY - endY) < 2) {
+        return `M ${startX} ${startY} H ${endX}`;
+      }
       
-      // Check if horizontal segments hit obstacles and adjust midY
+      return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
+    } else {
+      // Right-to-left or overlapping: need vertical detour
+      // Pick midY closest to shorter vertical distance
+      let midY = (startY + endY) / 2 + channelOffset;
+      
       for (const box of obstacles) {
-        if (hSegIntersectsBox(midY, sx, ex, box)) {
-          // Route above or below obstacle
-          const aboveRoute = box.top - 10 - wireIndex * channelSpacing;
-          const belowRoute = box.bottom + 10 + wireIndex * channelSpacing;
-          midY = Math.abs(aboveRoute - startY) < Math.abs(belowRoute - startY) ? aboveRoute : belowRoute;
+        if (hSegIntersectsBox(midY, Math.min(sx, ex), Math.max(sx, ex), box)) {
+          const aboveRoute = box.top - 6;
+          const belowRoute = box.bottom + 6;
+          // Pick shorter detour
+          const aboveDist = Math.abs(aboveRoute - startY) + Math.abs(aboveRoute - endY);
+          const belowDist = Math.abs(belowRoute - startY) + Math.abs(belowRoute - endY);
+          midY = aboveDist <= belowDist ? aboveRoute : belowRoute;
         }
       }
       
