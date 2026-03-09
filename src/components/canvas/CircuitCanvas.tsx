@@ -158,8 +158,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Get wire path with improved orthogonal routing
-  const getWirePath = (wire: Wire): string => {
+  // Get wire path with improved orthogonal routing that avoids overlap
+  const getWirePath = (wire: Wire, wireIndex: number): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
     
@@ -175,19 +175,18 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const endX = targetComp.position.x + targetPin.position.x;
     const endY = targetComp.position.y + targetPin.position.y;
     
-    // Improved routing with offset segments to avoid overlapping with components
-    const gapOut = 15;
-    const gapIn = 15;
+    // Offset each wire's routing channel to prevent overlap
+    const channelSpacing = 8;
+    const gapOut = 15 + wireIndex * channelSpacing;
+    const gapIn = 15 + wireIndex * channelSpacing;
     const sx = startX + gapOut;
     const ex = endX - gapIn;
     
     if (sx < ex) {
-      // Simple case: source is left of target
       const midX = (sx + ex) / 2;
       return `M ${startX} ${startY} H ${sx} H ${midX} V ${endY} H ${ex} H ${endX}`;
     } else {
-      // Source is right of target — route around
-      const midY = (startY + endY) / 2;
+      const midY = (startY + endY) / 2 + wireIndex * channelSpacing;
       return `M ${startX} ${startY} H ${sx} V ${midY} H ${ex} V ${endY} H ${endX}`;
     }
   };
