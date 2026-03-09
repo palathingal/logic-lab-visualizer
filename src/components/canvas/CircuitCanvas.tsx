@@ -158,7 +158,34 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Get wire path with improved orthogonal routing that avoids overlap
+  // Get component bounding box with padding
+  const getCompBounds = (comp: CircuitComponent) => {
+    const w = 80; // component width estimate (gate ~60 + pin margins)
+    const h = 60; // component height estimate
+    const pad = 12;
+    return {
+      left: comp.position.x - pad,
+      right: comp.position.x + w + pad,
+      top: comp.position.y - pad,
+      bottom: comp.position.y + h + pad,
+    };
+  };
+
+  // Check if a horizontal segment (y=segY, from x1 to x2) intersects a box
+  const hSegIntersectsBox = (segY: number, x1: number, x2: number, box: { left: number; right: number; top: number; bottom: number }) => {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    return segY > box.top && segY < box.bottom && maxX > box.left && minX < box.right;
+  };
+
+  // Check if a vertical segment (x=segX, from y1 to y2) intersects a box
+  const vSegIntersectsBox = (segX: number, y1: number, y2: number, box: { left: number; right: number; top: number; bottom: number }) => {
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    return segX > box.left && segX < box.right && maxY > box.top && minY < box.bottom;
+  };
+
+  // Get wire path with routing that avoids components
   const getWirePath = (wire: Wire, wireIndex: number): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
@@ -175,18 +202,46 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const endX = targetComp.position.x + targetPin.position.x;
     const endY = targetComp.position.y + targetPin.position.y;
     
-    // Offset each wire's routing channel to prevent overlap
+    // Collect bounding boxes of all OTHER components (not source/target)
+    const obstacles = components
+      .filter(c => c.id !== wire.sourceComponentId && c.id !== wire.targetComponentId)
+      .map(getCompBounds);
+
     const channelSpacing = 8;
-    const gapOut = 15 + wireIndex * channelSpacing;
-    const gapIn = 15 + wireIndex * channelSpacing;
+    const gapOut = 20 + wireIndex * channelSpacing;
+    const gapIn = 20 + wireIndex * channelSpacing;
     const sx = startX + gapOut;
     const ex = endX - gapIn;
     
     if (sx < ex) {
-      const midX = (sx + ex) / 2;
+      // Simple left-to-right: try midX routing, adjust if it hits obstacles
+      let midX = (sx + ex) / 2;
+      
+      // Check if vertical segment at midX hits any obstacle
+      for (const box of obstacles) {
+        if (vSegIntersectsBox(midX, startY, endY, box)) {
+          // Route around: pick left or right of obstacle
+          const leftRoute = box.left - 10 - wireIndex * channelSpacing;
+          const rightRoute = box.right + 10 + wireIndex * channelSpacing;
+          midX = Math.abs(leftRoute - sx) < Math.abs(rightRoute - sx) ? leftRoute : rightRoute;
+        }
+      }
+      
       return `M ${startX} ${startY} H ${sx} H ${midX} V ${endY} H ${ex} H ${endX}`;
     } else {
-      const midY = (startY + endY) / 2 + wireIndex * channelSpacing;
+      // Right-to-left or same column: route with vertical detour
+      let midY = (startY + endY) / 2 + wireIndex * channelSpacing;
+      
+      // Check if horizontal segments hit obstacles and adjust midY
+      for (const box of obstacles) {
+        if (hSegIntersectsBox(midY, sx, ex, box)) {
+          // Route above or below obstacle
+          const aboveRoute = box.top - 10 - wireIndex * channelSpacing;
+          const belowRoute = box.bottom + 10 + wireIndex * channelSpacing;
+          midY = Math.abs(aboveRoute - startY) < Math.abs(belowRoute - startY) ? aboveRoute : belowRoute;
+        }
+      }
+      
       return `M ${startX} ${startY} H ${sx} V ${midY} H ${ex} V ${endY} H ${endX}`;
     }
   };
