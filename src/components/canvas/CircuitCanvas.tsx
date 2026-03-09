@@ -234,8 +234,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         }}
       >
         {/* Wires - invisible fat hit area + visible wire */}
-        {wires.map(wire => {
-          const path = getWirePath(wire);
+        {wires.map((wire, index) => {
+          const path = getWirePath(wire, index);
           const isSelected = canvasState.selectedWireId === wire.id;
           return (
             <g key={wire.id}>
