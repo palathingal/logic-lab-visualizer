@@ -202,70 +202,99 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const endX = targetComp.position.x + targetPin.position.x;
     const endY = targetComp.position.y + targetPin.position.y;
     
-    // Collect bounding boxes of all OTHER components (not source/target)
-    const obstacles = components
+    // Include ALL components as obstacles (including source/target bodies)
+    const allObstacles = components.map(getCompBounds);
+    // Exclude source/target for the main routing decision but check all for segment validation
+    const midObstacles = components
       .filter(c => c.id !== wire.sourceComponentId && c.id !== wire.targetComponentId)
       .map(getCompBounds);
 
-    // Small per-wire offset to prevent exact overlap when multiple wires share a channel
     const channelOffset = wireIndex * 4;
-    const pinGap = 15; // minimal clearance from pin
+    const margin = 14; // clearance around components
+
+    // Helper: check if a horizontal segment is blocked by ANY obstacle
+    const isHBlocked = (y: number, x1: number, x2: number) =>
+      allObstacles.some(box => hSegIntersectsBox(y, x1, x2, box));
+
+    // Helper: check if a vertical segment is blocked by ANY obstacle  
+    const isVBlocked = (x: number, y1: number, y2: number) =>
+      allObstacles.some(box => vSegIntersectsBox(x, y1, y2, box));
+
+    // Find a clear vertical x position near preferred, avoiding all obstacles
+    const findClearVerticalX = (preferred: number, y1: number, y2: number): number => {
+      if (!isVBlocked(preferred, y1, y2)) return preferred;
+      // Search outward from preferred
+      for (let offset = 20; offset < 400; offset += 10) {
+        const left = preferred - offset;
+        const right = preferred + offset;
+        if (!isVBlocked(left, y1, y2)) return left;
+        if (!isVBlocked(right, y1, y2)) return right;
+      }
+      return preferred; // fallback
+    };
+
+    // Find a clear horizontal y position near preferred, avoiding all obstacles
+    const findClearHorizontalY = (preferred: number, x1: number, x2: number): number => {
+      if (!isHBlocked(preferred, x1, x2)) return preferred;
+      for (let offset = 20; offset < 400; offset += 10) {
+        const above = preferred - offset;
+        const below = preferred + offset;
+        if (!isHBlocked(above, x1, x2)) return above;
+        if (!isHBlocked(below, x1, x2)) return below;
+      }
+      return preferred;
+    };
+
+    const pinGap = 15;
     const sx = startX + pinGap;
     const ex = endX - pinGap;
 
-    // Direct horizontal: pins are at same Y
-    if (Math.abs(startY - endY) < 2 && sx < ex) {
-      // Check if direct line hits any obstacle
-      let blocked = false;
-      for (const box of obstacles) {
-        if (hSegIntersectsBox(startY, sx, ex, box)) { blocked = true; break; }
-      }
-      if (!blocked) {
-        return `M ${startX} ${startY} H ${endX}`;
-      }
-    }
-    
     if (sx < ex) {
-      // Left-to-right: shortest is straight midX bend
-      // Try direct vertical at midX first
-      let midX = (startX + endX) / 2 + channelOffset;
-      
-      let hitObstacle = false;
-      for (const box of obstacles) {
-        if (vSegIntersectsBox(midX, startY, endY, box)) {
-          hitObstacle = true;
-          // Pick the closer side to route around
-          const leftRoute = box.left - 6;
-          const rightRoute = box.right + 6;
-          // Choose whichever keeps the path shorter
-          const leftDist = Math.abs(leftRoute - startX) + Math.abs(leftRoute - endX);
-          const rightDist = Math.abs(rightRoute - startX) + Math.abs(rightRoute - endX);
-          midX = leftDist <= rightDist ? leftRoute : rightRoute;
-        }
-      }
-      
-      if (!hitObstacle && Math.abs(startY - endY) < 2) {
+      // Left-to-right routing
+      // Try direct horizontal first (same Y)
+      if (Math.abs(startY - endY) < 2 && !isHBlocked(startY, startX, endX)) {
         return `M ${startX} ${startY} H ${endX}`;
       }
-      
+
+      // Standard L-bend: go right to midX, go vertical to endY, go right to endX
+      let midX = (startX + endX) / 2 + channelOffset;
+      midX = findClearVerticalX(midX, Math.min(startY, endY) - margin, Math.max(startY, endY) + margin);
+
+      // Validate the two horizontal segments too
+      // Segment 1: startY from startX to midX
+      if (isHBlocked(startY, startX, midX)) {
+        // Need a 5-segment path: go out, vertical to clearY, horizontal to midX area, vertical to endY, horizontal to end
+        const clearY = findClearHorizontalY(startY + (endY > startY ? -40 : 40) + channelOffset, startX, endX);
+        const vx1 = findClearVerticalX(sx + channelOffset, Math.min(startY, clearY), Math.max(startY, clearY));
+        const vx2 = findClearVerticalX(ex - channelOffset, Math.min(clearY, endY), Math.max(clearY, endY));
+        return `M ${startX} ${startY} H ${vx1} V ${clearY} H ${vx2} V ${endY} H ${endX}`;
+      }
+
+      // Segment 2: endY from midX to endX
+      if (isHBlocked(endY, midX, endX)) {
+        const clearY = findClearHorizontalY(endY + (startY > endY ? -40 : 40) + channelOffset, startX, endX);
+        const vx1 = findClearVerticalX(sx + channelOffset, Math.min(startY, clearY), Math.max(startY, clearY));
+        const vx2 = findClearVerticalX(ex - channelOffset, Math.min(clearY, endY), Math.max(clearY, endY));
+        return `M ${startX} ${startY} H ${vx1} V ${clearY} H ${vx2} V ${endY} H ${endX}`;
+      }
+
       return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
     } else {
-      // Right-to-left or overlapping: need vertical detour
-      // Pick midY closest to shorter vertical distance
+      // Right-to-left or overlapping: 5-segment path
       let midY = (startY + endY) / 2 + channelOffset;
-      
-      for (const box of obstacles) {
-        if (hSegIntersectsBox(midY, Math.min(sx, ex), Math.max(sx, ex), box)) {
-          const aboveRoute = box.top - 6;
-          const belowRoute = box.bottom + 6;
-          // Pick shorter detour
-          const aboveDist = Math.abs(aboveRoute - startY) + Math.abs(aboveRoute - endY);
-          const belowDist = Math.abs(belowRoute - startY) + Math.abs(belowRoute - endY);
-          midY = aboveDist <= belowDist ? aboveRoute : belowRoute;
-        }
+      midY = findClearHorizontalY(midY, Math.min(sx, ex) - margin, Math.max(sx, ex) + margin);
+
+      // Also validate vertical segments
+      let vx1 = sx;
+      let vx2 = ex;
+      if (isVBlocked(vx1, Math.min(startY, midY), Math.max(startY, midY))) {
+        vx1 = findClearVerticalX(vx1, Math.min(startY, midY), Math.max(startY, midY));
       }
-      
-      return `M ${startX} ${startY} H ${sx} V ${midY} H ${ex} V ${endY} H ${endX}`;
+      if (isVBlocked(vx2, Math.min(midY, endY), Math.max(midY, endY))) {
+        vx2 = findClearVerticalX(vx2, Math.min(midY, endY), Math.max(midY, endY));
+      }
+
+      return `M ${startX} ${startY} H ${vx1} V ${midY} H ${vx2} V ${endY} H ${endX}`;
     }
   };
 
