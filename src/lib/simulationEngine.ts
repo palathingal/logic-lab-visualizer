@@ -334,6 +334,13 @@ export class SimulationEngine {
 
     if (!clockEdge && !['SR_LATCH', 'D_LATCH'].includes(component.type)) return null;
     
+    // Helper to get current Q value using actual pin ID
+    const getQ = (): LogicValue => {
+      const qPin = component.pins.find(p => p.name === 'Q');
+      if (!qPin) return 'X';
+      return this.nodeValues.get(`${component.id}.${qPin.id}`) ?? 'X';
+    };
+
     switch (component.type) {
       case 'D_FF': {
         const [d] = inputs;
@@ -341,7 +348,7 @@ export class SimulationEngine {
       }
       case 'JK_FF': {
         const [j, , k] = inputs;
-        const currentQ = this.nodeValues.get(`${component.id}.Q`) ?? 0;
+        const currentQ = getQ();
         if (j === 1 && k === 1) return currentQ === 1 ? 0 : 1; // Toggle
         if (j === 1) return 1;
         if (k === 1) return 0;
@@ -352,12 +359,12 @@ export class SimulationEngine {
         if (s === 1 && r === 1) return 'X'; // Invalid state
         if (s === 1) return 1;
         if (r === 1) return 0;
-        return this.nodeValues.get(`${component.id}.Q`) ?? 'X';
+        return getQ();
       }
       case 'D_LATCH': {
         const [d, en] = inputs;
         if (en === 1) return d;
-        return this.nodeValues.get(`${component.id}.Q`) ?? 'X';
+        return getQ();
       }
       default:
         return 'X';
