@@ -158,34 +158,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Get component bounding box with padding
-  const getCompBounds = (comp: CircuitComponent) => {
-    const w = 80; // component width estimate (gate ~60 + pin margins)
-    const h = 60; // component height estimate
-    const pad = 12;
-    return {
-      left: comp.position.x - pad,
-      right: comp.position.x + w + pad,
-      top: comp.position.y - pad,
-      bottom: comp.position.y + h + pad,
-    };
-  };
-
-  // Check if a horizontal segment (y=segY, from x1 to x2) intersects a box
-  const hSegIntersectsBox = (segY: number, x1: number, x2: number, box: { left: number; right: number; top: number; bottom: number }) => {
-    const minX = Math.min(x1, x2);
-    const maxX = Math.max(x1, x2);
-    return segY > box.top && segY < box.bottom && maxX > box.left && minX < box.right;
-  };
-
-  // Check if a vertical segment (x=segX, from y1 to y2) intersects a box
-  const vSegIntersectsBox = (segX: number, y1: number, y2: number, box: { left: number; right: number; top: number; bottom: number }) => {
-    const minY = Math.min(y1, y2);
-    const maxY = Math.max(y1, y2);
-    return segX > box.left && segX < box.right && maxY > box.top && minY < box.bottom;
-  };
-
-  // Get wire path with routing that avoids components
+  // Simple orthogonal wire path (no obstacle avoidance)
   const getWirePath = (wire: Wire, wireIndex: number): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
@@ -202,99 +175,17 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const endX = targetComp.position.x + targetPin.position.x;
     const endY = targetComp.position.y + targetPin.position.y;
     
-    // Include ALL components as obstacles (including source/target bodies)
-    const allObstacles = components.map(getCompBounds);
-    // Exclude source/target for the main routing decision but check all for segment validation
-    const midObstacles = components
-      .filter(c => c.id !== wire.sourceComponentId && c.id !== wire.targetComponentId)
-      .map(getCompBounds);
-
     const channelOffset = wireIndex * 4;
-    const margin = 14; // clearance around components
 
-    // Helper: check if a horizontal segment is blocked by ANY obstacle
-    const isHBlocked = (y: number, x1: number, x2: number) =>
-      allObstacles.some(box => hSegIntersectsBox(y, x1, x2, box));
-
-    // Helper: check if a vertical segment is blocked by ANY obstacle  
-    const isVBlocked = (x: number, y1: number, y2: number) =>
-      allObstacles.some(box => vSegIntersectsBox(x, y1, y2, box));
-
-    // Find a clear vertical x position near preferred, avoiding all obstacles
-    const findClearVerticalX = (preferred: number, y1: number, y2: number): number => {
-      if (!isVBlocked(preferred, y1, y2)) return preferred;
-      // Search outward from preferred
-      for (let offset = 20; offset < 400; offset += 10) {
-        const left = preferred - offset;
-        const right = preferred + offset;
-        if (!isVBlocked(left, y1, y2)) return left;
-        if (!isVBlocked(right, y1, y2)) return right;
-      }
-      return preferred; // fallback
-    };
-
-    // Find a clear horizontal y position near preferred, avoiding all obstacles
-    const findClearHorizontalY = (preferred: number, x1: number, x2: number): number => {
-      if (!isHBlocked(preferred, x1, x2)) return preferred;
-      for (let offset = 20; offset < 400; offset += 10) {
-        const above = preferred - offset;
-        const below = preferred + offset;
-        if (!isHBlocked(above, x1, x2)) return above;
-        if (!isHBlocked(below, x1, x2)) return below;
-      }
-      return preferred;
-    };
-
-    const pinGap = 15;
-    const sx = startX + pinGap;
-    const ex = endX - pinGap;
-
-    if (sx < ex) {
-      // Left-to-right routing
-      // Try direct horizontal first (same Y)
-      if (Math.abs(startY - endY) < 2 && !isHBlocked(startY, startX, endX)) {
-        return `M ${startX} ${startY} H ${endX}`;
-      }
-
-      // Standard L-bend: go right to midX, go vertical to endY, go right to endX
-      let midX = (startX + endX) / 2 + channelOffset;
-      midX = findClearVerticalX(midX, Math.min(startY, endY) - margin, Math.max(startY, endY) + margin);
-
-      // Validate the two horizontal segments too
-      // Segment 1: startY from startX to midX
-      if (isHBlocked(startY, startX, midX)) {
-        // Need a 5-segment path: go out, vertical to clearY, horizontal to midX area, vertical to endY, horizontal to end
-        const clearY = findClearHorizontalY(startY + (endY > startY ? -40 : 40) + channelOffset, startX, endX);
-        const vx1 = findClearVerticalX(sx + channelOffset, Math.min(startY, clearY), Math.max(startY, clearY));
-        const vx2 = findClearVerticalX(ex - channelOffset, Math.min(clearY, endY), Math.max(clearY, endY));
-        return `M ${startX} ${startY} H ${vx1} V ${clearY} H ${vx2} V ${endY} H ${endX}`;
-      }
-
-      // Segment 2: endY from midX to endX
-      if (isHBlocked(endY, midX, endX)) {
-        const clearY = findClearHorizontalY(endY + (startY > endY ? -40 : 40) + channelOffset, startX, endX);
-        const vx1 = findClearVerticalX(sx + channelOffset, Math.min(startY, clearY), Math.max(startY, clearY));
-        const vx2 = findClearVerticalX(ex - channelOffset, Math.min(clearY, endY), Math.max(clearY, endY));
-        return `M ${startX} ${startY} H ${vx1} V ${clearY} H ${vx2} V ${endY} H ${endX}`;
-      }
-
+    if (startX < endX) {
+      // Left-to-right: simple L-bend
+      const midX = (startX + endX) / 2 + channelOffset;
       return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
     } else {
-      // Right-to-left or overlapping: 5-segment path
-      let midY = (startY + endY) / 2 + channelOffset;
-      midY = findClearHorizontalY(midY, Math.min(sx, ex) - margin, Math.max(sx, ex) + margin);
-
-      // Also validate vertical segments
-      let vx1 = sx;
-      let vx2 = ex;
-      if (isVBlocked(vx1, Math.min(startY, midY), Math.max(startY, midY))) {
-        vx1 = findClearVerticalX(vx1, Math.min(startY, midY), Math.max(startY, midY));
-      }
-      if (isVBlocked(vx2, Math.min(midY, endY), Math.max(midY, endY))) {
-        vx2 = findClearVerticalX(vx2, Math.min(midY, endY), Math.max(midY, endY));
-      }
-
-      return `M ${startX} ${startY} H ${vx1} V ${midY} H ${vx2} V ${endY} H ${endX}`;
+      // Right-to-left: 5-segment path
+      const midY = (startY + endY) / 2 + channelOffset;
+      const pinGap = 15;
+      return `M ${startX} ${startY} H ${startX + pinGap} V ${midY} H ${endX - pinGap} V ${endY} H ${endX}`;
     }
   };
 
