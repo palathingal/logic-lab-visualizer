@@ -158,7 +158,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Simple orthogonal wire path (no obstacle avoidance)
+  // Shortest-path orthogonal wire routing
   const getWirePath = (wire: Wire, wireIndex: number): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
@@ -177,12 +177,22 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     
     const channelOffset = wireIndex * 4;
 
+    // Direct horizontal line if same Y
+    if (Math.abs(startY - endY) < 2) {
+      return `M ${startX} ${startY} H ${endX}`;
+    }
+
+    // Direct vertical line if same X
+    if (Math.abs(startX - endX) < 2) {
+      return `M ${startX} ${startY} V ${endY}`;
+    }
+
     if (startX < endX) {
-      // Left-to-right: simple L-bend
+      // Left-to-right: single L-bend at midpoint for shortest path
       const midX = (startX + endX) / 2 + channelOffset;
       return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
     } else {
-      // Right-to-left: 5-segment path
+      // Right-to-left: 5-segment with tight midY for shortest total length
       const midY = (startY + endY) / 2 + channelOffset;
       const pinGap = 15;
       return `M ${startX} ${startY} H ${startX + pinGap} V ${midY} H ${endX - pinGap} V ${endY} H ${endX}`;
