@@ -234,11 +234,81 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
+      {/* Components layer */}
+      <div
+        className="absolute inset-0"
         style={{
           transform: `translate(${canvasState.pan.x}px, ${canvasState.pan.y}px) scale(${canvasState.zoom})`,
           transformOrigin: '0 0',
+        }}
+      >
+        {components.map(component => {
+          const definition = getComponentDefinition(component.type);
+          const isSelected = canvasState.selectedComponentId === component.id;
+          const isMultiSelected = multiSelectIds.includes(component.id);
+          const hasViolation = violations.some(v => v.componentId === component.id);
+          
+          return (
+            <div
+              key={component.id}
+              className={`absolute gate-component cursor-move ${isSelected || isMultiSelected ? 'z-10' : ''} ${hasViolation ? 'animate-pulse' : ''}`}
+              style={{
+                left: component.position.x,
+                top: component.position.y,
+                outline: isMultiSelected ? '1.5px dashed hsl(var(--primary) / 0.6)' : 'none',
+                outlineOffset: '6px',
+                borderRadius: '6px',
+                boxShadow: isMultiSelected ? '0 0 12px 2px hsl(var(--primary) / 0.15)' : 'none',
+              }}
+              onMouseDown={(e) => handleComponentMouseDown(e, component.id)}
+            >
+              <GateSVG 
+                type={component.type} 
+                isSelected={isSelected} 
+                hasViolation={hasViolation}
+                customName={component.type === 'CUSTOM' ? customComponents.find(c => c.id === component.customComponentDefId)?.name : undefined}
+                pinCount={component.pins.length}
+              />
+              
+              {/* Pin hitboxes */}
+              {component.pins.map(pin => (
+                <div
+                  key={pin.id}
+                  className={`absolute w-4 h-4 -ml-2 -mt-2 rounded-full cursor-pointer transition-all
+                    ${pin.type === 'input' ? 'hover:bg-pin-input/50' : 'hover:bg-pin-output/50'}
+                    ${canvasState.isWiring ? 'ring-2 ring-primary animate-pulse' : ''}`}
+                  style={{
+                    left: pin.position.x,
+                    top: pin.position.y,
+                  }}
+                  onClick={(e) => handlePinClick(e, component.id, pin.id)}
+                >
+                  <div
+                    className={`w-2 h-2 m-1 rounded-full ${
+                      pin.type === 'input' ? 'bg-pin-input' : 'bg-pin-output'
+                    }`}
+                  />
+                </div>
+              ))}
+              
+              {/* Component name label */}
+              <div className="absolute -bottom-5 left-0 right-0 text-center">
+                <span className="text-[10px] text-muted-foreground font-mono truncate">
+                  {component.name}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Wires layer - rendered ABOVE components for clickability */}
+      <svg
+        className="absolute inset-0 w-full h-full"
+        style={{
+          transform: `translate(${canvasState.pan.x}px, ${canvasState.pan.y}px) scale(${canvasState.zoom})`,
+          transformOrigin: '0 0',
+          pointerEvents: 'none',
         }}
       >
         {/* Wires - invisible fat hit area + visible wire */}
