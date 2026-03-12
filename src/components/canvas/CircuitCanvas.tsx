@@ -158,7 +158,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     e.preventDefault();
   };
 
-  // Simple orthogonal wire path (no obstacle avoidance)
+  // Shortest-path orthogonal wire routing
   const getWirePath = (wire: Wire, wireIndex: number): string => {
     const sourceComp = components.find(c => c.id === wire.sourceComponentId);
     const targetComp = components.find(c => c.id === wire.targetComponentId);
@@ -177,12 +177,22 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     
     const channelOffset = wireIndex * 4;
 
+    // Direct horizontal line if same Y
+    if (Math.abs(startY - endY) < 2) {
+      return `M ${startX} ${startY} H ${endX}`;
+    }
+
+    // Direct vertical line if same X
+    if (Math.abs(startX - endX) < 2) {
+      return `M ${startX} ${startY} V ${endY}`;
+    }
+
     if (startX < endX) {
-      // Left-to-right: simple L-bend
+      // Left-to-right: single L-bend at midpoint for shortest path
       const midX = (startX + endX) / 2 + channelOffset;
       return `M ${startX} ${startY} H ${midX} V ${endY} H ${endX}`;
     } else {
-      // Right-to-left: 5-segment path
+      // Right-to-left: 5-segment with tight midY for shortest total length
       const midY = (startY + endY) / 2 + channelOffset;
       const pinGap = 15;
       return `M ${startX} ${startY} H ${startX + pinGap} V ${midY} H ${endX - pinGap} V ${endY} H ${endX}`;
@@ -224,73 +234,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        style={{
-          transform: `translate(${canvasState.pan.x}px, ${canvasState.pan.y}px) scale(${canvasState.zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        {/* Wires - invisible fat hit area + visible wire */}
-        {wires.map((wire, index) => {
-          const path = getWirePath(wire, index);
-          const isSelected = canvasState.selectedWireId === wire.id;
-          return (
-            <g key={wire.id}>
-              {/* Invisible wide hit area for easy clicking */}
-              <path
-                d={path}
-                fill="none"
-                stroke="transparent"
-                strokeWidth="12"
-                className="pointer-events-auto cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectWire(wire.id);
-                }}
-              />
-              {/* Visible wire */}
-              <path
-                d={path}
-                fill="none"
-                stroke={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--wire))'}
-                strokeWidth={isSelected ? 3 : 2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="pointer-events-none"
-              />
-              {/* Selection highlight dots at endpoints */}
-              {isSelected && (() => {
-                const sourceComp = components.find(c => c.id === wire.sourceComponentId);
-                const targetComp = components.find(c => c.id === wire.targetComponentId);
-                const sourcePin = sourceComp?.pins.find(p => p.id === wire.sourcePinId);
-                const targetPin = targetComp?.pins.find(p => p.id === wire.targetPinId);
-                if (!sourceComp || !targetComp || !sourcePin || !targetPin) return null;
-                return (
-                  <>
-                    <circle cx={sourceComp.position.x + sourcePin.position.x} cy={sourceComp.position.y + sourcePin.position.y} r="4" fill="hsl(var(--primary))" />
-                    <circle cx={targetComp.position.x + targetPin.position.x} cy={targetComp.position.y + targetPin.position.y} r="4" fill="hsl(var(--primary))" />
-                  </>
-                );
-              })()}
-            </g>
-          );
-        })}
-        
-        {/* Temporary wire while wiring */}
-        {tempWirePath && (
-          <path
-            d={tempWirePath}
-            fill="none"
-            stroke="hsl(var(--primary))"
-            strokeWidth="2"
-            strokeDasharray="5 5"
-            className="animate-signal-flow"
-          />
-        )}
-      </svg>
-
-      {/* Components */}
+      {/* Components layer */}
       <div
         className="absolute inset-0"
         style={{
@@ -357,6 +301,75 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           );
         })}
       </div>
+
+      {/* Wires layer - rendered ABOVE components for clickability */}
+      <svg
+        className="absolute inset-0 w-full h-full"
+        style={{
+          transform: `translate(${canvasState.pan.x}px, ${canvasState.pan.y}px) scale(${canvasState.zoom})`,
+          transformOrigin: '0 0',
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Wires - invisible fat hit area + visible wire */}
+        {wires.map((wire, index) => {
+          const path = getWirePath(wire, index);
+          const isSelected = canvasState.selectedWireId === wire.id;
+          return (
+            <g key={wire.id}>
+              {/* Invisible wide hit area for easy clicking */}
+              <path
+                d={path}
+                fill="none"
+                stroke="transparent"
+                strokeWidth="12"
+                className="pointer-events-auto cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectWire(wire.id);
+                }}
+              />
+              {/* Visible wire */}
+              <path
+                d={path}
+                fill="none"
+                stroke={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--wire))'}
+                strokeWidth={isSelected ? 3 : 2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none"
+              />
+              {/* Selection highlight dots at endpoints */}
+              {isSelected && (() => {
+                const sourceComp = components.find(c => c.id === wire.sourceComponentId);
+                const targetComp = components.find(c => c.id === wire.targetComponentId);
+                const sourcePin = sourceComp?.pins.find(p => p.id === wire.sourcePinId);
+                const targetPin = targetComp?.pins.find(p => p.id === wire.targetPinId);
+                if (!sourceComp || !targetComp || !sourcePin || !targetPin) return null;
+                return (
+                  <>
+                    <circle cx={sourceComp.position.x + sourcePin.position.x} cy={sourceComp.position.y + sourcePin.position.y} r="4" fill="hsl(var(--primary))" />
+                    <circle cx={targetComp.position.x + targetPin.position.x} cy={targetComp.position.y + targetPin.position.y} r="4" fill="hsl(var(--primary))" />
+                  </>
+                );
+              })()}
+            </g>
+          );
+        })}
+        
+        {/* Temporary wire while wiring */}
+        {tempWirePath && (
+          <path
+            d={tempWirePath}
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeWidth="2"
+            strokeDasharray="5 5"
+            className="animate-signal-flow"
+          />
+        )}
+      </svg>
+
 
       {/* Zoom indicator */}
       <div className="absolute bottom-4 right-4 px-2 py-1 bg-card/80 rounded text-xs font-mono text-muted-foreground">
