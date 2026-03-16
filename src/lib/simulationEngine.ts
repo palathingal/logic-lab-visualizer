@@ -585,7 +585,8 @@ export class SimulationEngine {
             const clkNodeId = `${wire.sourceComponentId}.${wire.sourcePinId}`;
             const prevClk = this.previousNodeValues.get(clkNodeId);
             const currClk = this.nodeValues.get(clkNodeId);
-            clockEdge = prevClk === 0 && currClk === 1;
+            // Detect rising edge: any non-1 to 1 transition (including X→1 at simulation start)
+            clockEdge = prevClk !== 1 && currClk === 1;
           }
         }
 
