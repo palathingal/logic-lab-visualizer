@@ -382,8 +382,11 @@ export class SimulationEngine {
         const period = pattern.period ?? 10;
         const duty = pattern.dutyCycle ?? 0.5;
         const phase = pattern.phase ?? 0;
+        const startValue = pattern.startValue ?? 0;
         const t = (time + phase) % period;
-        return t < period * duty ? 1 : 0;
+        const highFirst = t < period * duty ? 1 : 0;
+        // If startValue is 1, invert so clock starts high
+        return startValue === 1 ? (highFirst === 1 ? 0 : 1) : highFirst;
       }
       case 'pulse': {
         const start = pattern.startTime ?? 0;

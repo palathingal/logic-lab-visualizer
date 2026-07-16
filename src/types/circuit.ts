@@ -136,6 +136,7 @@ export interface InputPattern {
   period?: number;
   dutyCycle?: number;
   phase?: number;
+  startValue?: 0 | 1; // clock starting level at t=0
   // For pulse
   pulseWidth?: number;
   startTime?: number;

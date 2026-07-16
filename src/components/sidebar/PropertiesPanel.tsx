@@ -215,6 +215,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       if (value === 'clock') {
                         newPattern.period = 10;
                         newPattern.dutyCycle = 0.5;
+                        newPattern.startValue = 0;
                       } else if (value === 'static') {
                         newPattern.value = 0;
                       } else if (value === 'pulse') {
@@ -257,6 +258,23 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
                   {pattern.type === 'clock' && (
                     <>
+                      <div>
+                        <Label className="text-xs">Start Value</Label>
+                        <Select
+                          value={String(pattern.startValue ?? 0)}
+                          onValueChange={(value) => {
+                            onUpdatePattern(component!.id, { ...pattern, startValue: Number(value) as 0 | 1 });
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs bg-input border-border mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0 (Start Low)</SelectItem>
+                            <SelectItem value="1">1 (Start High)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div>
                         <div className="flex justify-between">
                           <Label className="text-xs">Period</Label>
