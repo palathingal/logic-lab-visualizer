@@ -57,7 +57,7 @@ export const useCircuit = () => {
     if (type === 'INPUT') {
       pattern = { type: 'static', value: 0 };
     } else if (type === 'CLOCK') {
-      pattern = { type: 'clock', period: 10, dutyCycle: 0.5 };
+      pattern = { type: 'clock', period: 10, dutyCycle: 0.5, startValue: 0 };
     } else if (type === 'CONSTANT') {
       pattern = { type: 'static', value: 1 };
     }
