@@ -22,7 +22,7 @@ describe('D Flip-Flop', () => {
       position: { x: 0, y: 0 },
       pins: [{ id: 'pin_0', name: 'OUT', type: 'output', position: { x: 40, y: 20 } }],
       timing: { propagationDelay: 0, riseTime: 0.1, fallTime: 0.1 },
-      pattern: { type: 'clock', period: 10, dutyCycle: 0.5 },
+      pattern: { type: 'clock', period: 10, dutyCycle: 0.5, startValue: 1 },
     };
 
     const input: CircuitComponent = {
