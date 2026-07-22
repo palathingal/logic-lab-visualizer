@@ -404,6 +404,16 @@ export class SimulationEngine {
         }
         return currentValue;
       }
+      case 'random': {
+        const bitPeriod = pattern.bitPeriod ?? 5;
+        const seed = pattern.seed ?? 1;
+        const bitIndex = Math.floor(time / bitPeriod);
+        // Deterministic hash → 0/1
+        let h = (bitIndex + 1) * 2654435761 ^ (seed * 40503);
+        h = (h ^ (h >>> 13)) * 1274126177;
+        h = h ^ (h >>> 16);
+        return ((h >>> 0) & 1) as LogicValue;
+      }
       default:
         return 0;
     }
