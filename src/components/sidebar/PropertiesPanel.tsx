@@ -221,6 +221,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       } else if (value === 'pulse') {
                         newPattern.startTime = 5;
                         newPattern.pulseWidth = 10;
+                      } else if (value === 'random') {
+                        newPattern.bitPeriod = 5;
+                        newPattern.seed = Math.floor(Math.random() * 10000);
                       }
                       onUpdatePattern(component!.id, newPattern);
                     }}
@@ -233,6 +236,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       <SelectItem value="clock">Clock</SelectItem>
                       <SelectItem value="pulse">Pulse</SelectItem>
                       <SelectItem value="waveform">Waveform</SelectItem>
+                      <SelectItem value="random">Random</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -330,6 +334,45 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                           value={pattern.pulseWidth ?? 10}
                           onChange={(e) => {
                             onUpdatePattern(component!.id, { ...pattern, pulseWidth: Number(e.target.value) });
+                          }}
+                          className="h-8 text-xs bg-input border-border mt-1"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {pattern.type === 'random' && (
+                    <>
+                      <div>
+                        <Label className="text-xs">Bit Period (ns)</Label>
+                        <Input
+                          type="number"
+                          value={pattern.bitPeriod ?? 5}
+                          onChange={(e) => {
+                            onUpdatePattern(component!.id, { ...pattern, bitPeriod: Number(e.target.value) });
+                          }}
+                          className="h-8 text-xs bg-input border-border mt-1"
+                          min={0.1}
+                          step={0.1}
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between items-center">
+                          <Label className="text-xs">Seed</Label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => onUpdatePattern(component!.id, { ...pattern, seed: Math.floor(Math.random() * 10000) })}
+                          >
+                            Randomize
+                          </Button>
+                        </div>
+                        <Input
+                          type="number"
+                          value={pattern.seed ?? 1}
+                          onChange={(e) => {
+                            onUpdatePattern(component!.id, { ...pattern, seed: Number(e.target.value) });
                           }}
                           className="h-8 text-xs bg-input border-border mt-1"
                         />

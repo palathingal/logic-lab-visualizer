@@ -142,6 +142,9 @@ export interface InputPattern {
   startTime?: number;
   // For waveform
   transitions?: { time: number; value: LogicValue }[];
+  // For random
+  bitPeriod?: number; // ns per bit
+  seed?: number;
 }
 
 // Simulation state
